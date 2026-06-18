@@ -17,7 +17,7 @@ Built so you can clone it, drop in a key, and ship — or rip out the provider i
 
 ```bash
 git clone <your fork>
-cd open-ai-chat-UI
+cd openchat
 npm install
 cp .env.example .env.local      # fill in OPENROUTER_API_KEY
 npm run dev
