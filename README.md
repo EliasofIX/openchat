@@ -1,36 +1,171 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Open Chat
 
-## Getting Started
+A minimal, **forkable** open-source AI chat UI.
 
-First, run the development server:
+- Next.js 16 (App Router) + TypeScript
+- Tailwind v4 + shadcn-style tokens
+- The `openai` SDK pointed at **OpenRouter** (any OpenAI-compatible endpoint works)
+- Streaming, Markdown + LaTeX, code-block copy, dark mode, conversation history
+- No Vercel AI SDK, no LangChain, no magic — ~100 lines of streaming code
+
+Built so you can clone it, drop in a key, and ship — or rip out the provider in
+~10 lines and point it at your own inference stack.
+
+---
+
+## Quick start
 
 ```bash
+git clone <your fork>
+cd open-ai-chat-UI
+npm install
+cp .env.example .env.local      # fill in OPENROUTER_API_KEY
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Get an OpenRouter key at <https://openrouter.ai/keys>. The free tier has dozens
+of models you can use immediately — see <https://openrouter.ai/models>.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Project layout
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+  app/
+    api/chat/route.ts     ← The ONLY file that talks to the AI provider.
+    layout.tsx            ← Fonts, theme bootstrapping, KaTeX styles.
+    page.tsx              ← Renders <Chat />.
+    globals.css           ← Tailwind + design tokens.
+  components/
+    chat/
+      chat.tsx            ← Top-level shell: sidebar + header + messages + input.
+      chat-input.tsx      ← Auto-growing textarea with send / stop.
+      message.tsx         ← User bubble + assistant markdown block.
+      sidebar.tsx         ← Conversation list + settings entry point.
+      settings-dialog.tsx ← Name + custom instructions, persisted locally.
+    markdown.tsx          ← react-markdown + GFM + KaTeX + code blocks.
+  hooks/
+    use-chat.ts           ← Streaming engine. ~120 lines.
+    use-conversations.ts  ← LocalStorage-backed conversation list.
+    use-settings.ts       ← LocalStorage-backed user settings.
+  lib/
+    storage.ts            ← Tiny localStorage wrapper.
+    types.ts              ← Message / Conversation / UserSettings.
+    utils.ts              ← `cn()` (clsx + tailwind-merge).
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Every file is short on purpose. There are no clever abstractions to learn before
+you can change something.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## How streaming works
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+There is **no SSE framing, no JSON envelopes, no SDK** between the model and the
+browser. The flow is just:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. The client `POST`s the conversation history to `/api/chat`.
+2. The route handler calls `openai.chat.completions.create({ stream: true })`
+   against the OpenRouter base URL.
+3. For each upstream chunk, the handler enqueues `delta.content` as raw UTF-8
+   onto a `ReadableStream` and returns it.
+4. The client reads `response.body` with `getReader()` + `TextDecoder` and
+   appends every chunk to the current assistant message.
+
+That's the whole streaming layer. Read `src/app/api/chat/route.ts` and
+`src/hooks/use-chat.ts` together — under 200 lines total — and you'll understand
+exactly what's happening.
+
+---
+
+## Swapping providers
+
+Want to use OpenAI directly, Anthropic, Groq, an Ollama instance on your laptop,
+or your own inference endpoint? Edit **one file**: `src/app/api/chat/route.ts`.
+
+### OpenAI directly
+
+```ts
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// remove baseURL + defaultHeaders
+```
+
+### Local Ollama (or any OpenAI-compatible server)
+
+```ts
+const client = new OpenAI({
+  apiKey: "ollama",
+  baseURL: "http://localhost:11434/v1",
+});
+```
+
+### Anthropic, Gemini, Bedrock, …
+
+Replace the `openai` SDK call with the provider's SDK and stream their chunks
+through the same `ReadableStream` pattern. The client doesn't care what's
+producing the bytes.
+
+---
+
+## Configuration
+
+All configuration lives in `.env.local` (git-ignored — see `.env.example` for
+the template).
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `OPENROUTER_API_KEY` | yes | — | Your OpenRouter API key. Server-only. |
+| `DEFAULT_MODEL` | no | `openai/gpt-4o-mini` | Any OpenRouter model id. |
+| `NEXT_PUBLIC_SITE_URL` | no | `http://localhost:3000` | Sent as `HTTP-Referer`. |
+| `NEXT_PUBLIC_SITE_NAME` | no | `Open AI Chat UI` | Sent as `X-Title`. |
+
+The API key never leaves the server — the browser only ever talks to
+`/api/chat`.
+
+---
+
+## Secrets safety
+
+`.gitignore` is configured so:
+
+- `.env` and `.env.*` are **never** committed
+- `.env.example` and `*.example` templates **are** committed
+
+So as long as you put your real key in `.env.local`, you can `git push` to a
+public repo without leaking it. Double-check with `git status` before your
+first commit.
+
+---
+
+## What's deliberately missing
+
+This is a base, not a product. The following are intentional non-features so
+you can add what fits your stack:
+
+- **Auth.** Add Clerk, Auth0, NextAuth, anything.
+- **Server-side persistence.** Swap `src/lib/storage.ts` for a database.
+- **Model picker UI.** The API already accepts `model` per request — wire a
+  dropdown to it.
+- **Tool calling / function calling.** Add `tools` to the OpenAI call.
+- **File uploads / vision.** Extend the `messages` payload with image parts.
+- **Syntax highlighting.** Drop in `shiki` or `react-syntax-highlighter` inside
+  `markdown.tsx` if you want highlighted code.
+
+---
+
+## Scripts
+
+```bash
+npm run dev      # local dev server (Turbopack)
+npm run build    # production build
+npm run start    # serve the production build
+```
+
+---
+
+## License
+
+MIT — do whatever you want. Attribution appreciated but not required.
