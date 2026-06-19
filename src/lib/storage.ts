@@ -11,8 +11,11 @@ const KEY_ACTIVE = "openchat:active-conversation";
 export const DEFAULT_SETTINGS: UserSettings = {
   name: "",
   customInstructions: "",
+  provider: "openrouter",
   openRouterApiKey: "",
   model: "",
+  ollamaBaseUrl: "http://localhost:11434",
+  ollamaModel: "",
   reasoning: {
     enabled: false,
     effort: "medium",
@@ -20,6 +23,20 @@ export const DEFAULT_SETTINGS: UserSettings = {
     collapseByDefault: true,
   },
 };
+
+function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    provider: stored.provider ?? DEFAULT_SETTINGS.provider,
+    ollamaBaseUrl: stored.ollamaBaseUrl ?? DEFAULT_SETTINGS.ollamaBaseUrl,
+    ollamaModel: stored.ollamaModel ?? DEFAULT_SETTINGS.ollamaModel,
+    reasoning: {
+      ...DEFAULT_SETTINGS.reasoning,
+      ...stored.reasoning,
+    },
+  };
+}
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -45,14 +62,7 @@ export const storage = {
       localStorage.getItem(KEY_SETTINGS),
       {},
     );
-    return {
-      ...DEFAULT_SETTINGS,
-      ...stored,
-      reasoning: {
-        ...DEFAULT_SETTINGS.reasoning,
-        ...stored.reasoning,
-      },
-    };
+    return normalizeSettings(stored);
   },
   saveSettings(value: UserSettings) {
     if (typeof window === "undefined") return;

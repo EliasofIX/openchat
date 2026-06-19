@@ -15,7 +15,13 @@ export function useSettings() {
 
   const update = useCallback((patch: Partial<UserSettings>) => {
     setSettings((prev) => {
-      const next = { ...prev, ...patch };
+      const next: UserSettings = {
+        ...prev,
+        ...patch,
+        reasoning: patch.reasoning
+          ? { ...prev.reasoning, ...patch.reasoning }
+          : prev.reasoning,
+      };
       storage.saveSettings(next);
       return next;
     });

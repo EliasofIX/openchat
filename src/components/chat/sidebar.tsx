@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Settings, Trash2, X } from "lucide-react";
+import { HardDrive, Settings, Trash2, X } from "lucide-react";
 import type { Conversation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ type Props = {
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onOpenSettings: () => void;
+  onOpenProviders: () => void;
 };
 
 export function Sidebar({
@@ -23,6 +24,7 @@ export function Sidebar({
   onSelect,
   onDelete,
   onOpenSettings,
+  onOpenProviders,
 }: Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange} modal={false}>
@@ -102,12 +104,21 @@ export function Sidebar({
             )}
           </div>
 
-          <div className="border-t border-border/60 p-2">
+          <div className="space-y-0.5 border-t border-border/60 p-2">
             <button
               type="button"
-              onClick={() => {
-                onOpenSettings();
-              }}
+              onClick={onOpenProviders}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition",
+                "text-sidebar-foreground hover:bg-sidebar-accent/60",
+              )}
+            >
+              <HardDrive size={15} className="text-muted-foreground" />
+              <span>Model providers</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSettings}
               className={cn(
                 "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition",
                 "text-sidebar-foreground hover:bg-sidebar-accent/60",

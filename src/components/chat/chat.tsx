@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Brain, Menu, SquarePen } from "lucide-react";
 import { ChatInput } from "./chat-input";
 import { MessageItem } from "./message";
-import { SettingsDialog } from "./settings-dialog";
+import { SettingsDialog, type SettingsTab } from "./settings-dialog";
 import { Sidebar } from "./sidebar";
 import { useChat } from "@/hooks/use-chat";
 import { useConversations } from "@/hooks/use-conversations";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
+import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +20,10 @@ export function Chat() {
 
   const chat = useChat({
     systemPrompt,
-    model: settingsHook.settings.model,
+    provider: settingsHook.settings.provider,
+    model: getActiveModel(settingsHook.settings),
     apiKey: settingsHook.settings.openRouterApiKey,
+    ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
     onFinish: (_msg, all) => conv.upsertActive(all),
     onMessagesChange: (msgs) => conv.upsertActive(msgs),
@@ -29,6 +32,12 @@ export function Chat() {
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+
+  const openSettings = (tab: SettingsTab = "general") => {
+    setSettingsTab(tab);
+    setSettingsOpen(true);
+  };
 
   // Load messages from the active conversation when it changes (e.g. user
   // selects a different chat from the sidebar). We compare ids via a ref so
@@ -75,7 +84,11 @@ export function Chat() {
         onDelete={conv.remove}
         onOpenSettings={() => {
           setSidebarOpen(false);
-          setSettingsOpen(true);
+          openSettings("general");
+        }}
+        onOpenProviders={() => {
+          setSidebarOpen(false);
+          openSettings("providers");
         }}
       />
 
@@ -84,6 +97,7 @@ export function Chat() {
         onOpenChange={setSettingsOpen}
         settings={settingsHook.settings}
         onSave={settingsHook.update}
+        initialTab={settingsTab}
       />
 
       <header className="absolute left-0 top-0 z-10 flex items-center gap-1 p-2">
@@ -130,12 +144,30 @@ export function Chat() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
         <div className="pointer-events-auto mx-auto w-full max-w-3xl bg-gradient-to-t from-background from-70% via-background/90 to-transparent px-4 pb-4 pt-8">
           {settingsHook.settings.reasoning.enabled && (
-            <div className="mb-2 flex justify-center">
+            <div className="mb-2 flex justify-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+                {PROVIDER_LABELS[settingsHook.settings.provider]}
+              </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
                 <Brain size={11} className="text-violet-500" />
                 Reasoning
                 <span className="text-muted-foreground/70">·</span>
                 {REASONING_EFFORT_LABELS[settingsHook.settings.reasoning.effort]}
+              </span>
+            </div>
+          )}
+          {!settingsHook.settings.reasoning.enabled && (
+            <div className="mb-2 flex justify-center">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+                {PROVIDER_LABELS[settingsHook.settings.provider]}
+                {getActiveModel(settingsHook.settings) && (
+                  <>
+                    <span className="text-muted-foreground/70">·</span>
+                    <span className="max-w-[12rem] truncate font-mono">
+                      {getActiveModel(settingsHook.settings)}
+                    </span>
+                  </>
+                )}
               </span>
             </div>
           )}

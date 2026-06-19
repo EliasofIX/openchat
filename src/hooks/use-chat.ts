@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message, ReasoningSettings } from "@/lib/types";
+import type { Message, ModelProvider, ReasoningSettings } from "@/lib/types";
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -26,8 +26,10 @@ export type ChatStatus = "idle" | "streaming" | "error";
 export type UseChatOptions = {
   initialMessages?: Message[];
   systemPrompt?: string;
+  provider?: ModelProvider;
   model?: string;
   apiKey?: string;
+  ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
   onFinish?: (assistantMessage: Message, allMessages: Message[]) => void;
   onMessagesChange?: (messages: Message[]) => void;
@@ -57,7 +59,7 @@ function toApiMessage(m: Message): { role: Message["role"]; content: string; rea
 }
 
 export function useChat(options: UseChatOptions = {}) {
-  const { systemPrompt, model, apiKey, reasoning, onFinish, onMessagesChange } = options;
+  const { systemPrompt, provider, model, apiKey, ollamaBaseUrl, reasoning, onFinish, onMessagesChange } = options;
 
   const [messages, setMessages] = useState<Message[]>(options.initialMessages ?? []);
   const [status, setStatus] = useState<ChatStatus>("idle");
@@ -65,8 +67,10 @@ export function useChat(options: UseChatOptions = {}) {
 
   const messagesRef = useRef(messages);
   const systemPromptRef = useRef(systemPrompt);
+  const providerRef = useRef(provider);
   const modelRef = useRef(model);
   const apiKeyRef = useRef(apiKey);
+  const ollamaBaseUrlRef = useRef(ollamaBaseUrl);
   const reasoningRef = useRef(reasoning);
   const onFinishRef = useRef(onFinish);
   const onMessagesChangeRef = useRef(onMessagesChange);
@@ -75,8 +79,10 @@ export function useChat(options: UseChatOptions = {}) {
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { systemPromptRef.current = systemPrompt; }, [systemPrompt]);
+  useEffect(() => { providerRef.current = provider; }, [provider]);
   useEffect(() => { modelRef.current = model; }, [model]);
   useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
+  useEffect(() => { ollamaBaseUrlRef.current = ollamaBaseUrl; }, [ollamaBaseUrl]);
   useEffect(() => { reasoningRef.current = reasoning; }, [reasoning]);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
   useEffect(() => { onMessagesChangeRef.current = onMessagesChange; }, [onMessagesChange]);
@@ -155,6 +161,7 @@ export function useChat(options: UseChatOptions = {}) {
       const payload: Record<string, unknown> = {
         systemPrompt: systemPromptRef.current,
         messages: baseMessages.map(toApiMessage),
+        provider: providerRef.current ?? "openrouter",
       };
 
       const resolvedModel = modelRef.current?.trim();
@@ -162,6 +169,9 @@ export function useChat(options: UseChatOptions = {}) {
 
       const resolvedKey = apiKeyRef.current?.trim();
       if (resolvedKey) payload.apiKey = resolvedKey;
+
+      const resolvedOllamaUrl = ollamaBaseUrlRef.current?.trim();
+      if (resolvedOllamaUrl) payload.ollamaBaseUrl = resolvedOllamaUrl;
 
       if (reasoningRef.current) payload.reasoning = reasoningRef.current;
 

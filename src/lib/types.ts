@@ -34,10 +34,15 @@ export type ReasoningSettings = {
   collapseByDefault: boolean;
 };
 
+export type ModelProvider = "openrouter" | "ollama";
+
 export type UserSettings = {
   name: string;
   customInstructions: string;
+  provider: ModelProvider;
   openRouterApiKey: string;
   model: string;
+  ollamaBaseUrl: string;
+  ollamaModel: string;
   reasoning: ReasoningSettings;
 };
