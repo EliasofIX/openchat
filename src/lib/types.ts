@@ -6,6 +6,8 @@ export type Message = {
   id: string;
   role: Role;
   content: string;
+  reasoning?: string;
+  reasoningDurationMs?: number;
   createdAt: number;
 };
 
@@ -17,7 +19,25 @@ export type Conversation = {
   updatedAt: number;
 };
 
+export type ReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
+export type ReasoningSettings = {
+  enabled: boolean;
+  effort: ReasoningEffort;
+  showInResponse: boolean;
+  collapseByDefault: boolean;
+};
+
 export type UserSettings = {
   name: string;
   customInstructions: string;
+  openRouterApiKey: string;
+  model: string;
+  reasoning: ReasoningSettings;
 };

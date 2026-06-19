@@ -10,6 +10,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import OpenAI from "openai";
+import {
+  buildOpenRouterReasoning,
+  shouldStreamReasoning,
+} from "@/lib/openrouter";
+import { extractReasoningText } from "@/lib/reasoning";
+import type { ReasoningSettings } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,22 +27,24 @@ const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Open AI Chat UI";
 type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
+  reasoning?: string;
 };
 
 type ChatRequest = {
   messages: ChatMessage[];
   model?: string;
   systemPrompt?: string;
+  apiKey?: string;
+  reasoning?: ReasoningSettings;
 };
 
-export async function POST(req: Request) {
-  if (!process.env.OPENROUTER_API_KEY) {
-    return new Response(
-      "OPENROUTER_API_KEY is not set. Copy .env.example to .env.local and add your key.",
-      { status: 500 },
-    );
-  }
+type StreamPart = "content" | "reasoning";
 
+function encodePart(part: StreamPart, text: string): Uint8Array {
+  return new TextEncoder().encode(`${JSON.stringify({ p: part, t: text })}\n`);
+}
+
+export async function POST(req: Request) {
   let body: ChatRequest;
   try {
     body = (await req.json()) as ChatRequest;
@@ -44,20 +52,24 @@ export async function POST(req: Request) {
     return new Response("Invalid JSON body.", { status: 400 });
   }
 
-  const { messages, model, systemPrompt } = body;
+  const { messages, model, systemPrompt, apiKey, reasoning } = body;
+  const resolvedKey = apiKey?.trim() || process.env.OPENROUTER_API_KEY;
+
+  if (!resolvedKey) {
+    return new Response(
+      "No OpenRouter API key. Add one in Settings or set OPENROUTER_API_KEY in .env.local.",
+      { status: 500 },
+    );
+  }
+
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response("`messages` must be a non-empty array.", { status: 400 });
   }
 
-  // OpenRouter exposes an OpenAI-compatible API, so we can use the `openai`
-  // SDK by pointing `baseURL` at it. To switch providers, change baseURL +
-  // headers + apiKey here.
   const client = new OpenAI({
-    apiKey: process.env.OPENROUTER_API_KEY,
+    apiKey: resolvedKey,
     baseURL: "https://openrouter.ai/api/v1",
     defaultHeaders: {
-      // OpenRouter uses these for traffic attribution / leaderboards.
-      // Both are optional but recommended.
       "HTTP-Referer": SITE_URL,
       "X-Title": SITE_NAME,
     },
@@ -67,27 +79,47 @@ export async function POST(req: Request) {
     ? [{ role: "system", content: systemPrompt }, ...messages]
     : messages;
 
+  const reasoningParam = buildOpenRouterReasoning(reasoning);
+  const streamReasoning = shouldStreamReasoning(reasoning);
+
   let upstream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
   try {
     upstream = await client.chat.completions.create({
-      model: model ?? DEFAULT_MODEL,
+      model: model?.trim() || DEFAULT_MODEL,
       messages: fullMessages,
       stream: true,
-    });
+      ...(reasoningParam ? { reasoning: reasoningParam } : {}),
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown upstream error.";
     return new Response(`Upstream error: ${message}`, { status: 502 });
   }
 
-  // We stream raw UTF-8 text — no SSE framing, no JSON envelopes — so the
-  // client just reads tokens and appends. Simple and transparent.
-  const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
         for await (const chunk of upstream) {
-          const delta = chunk.choices[0]?.delta?.content;
-          if (delta) controller.enqueue(encoder.encode(delta));
+          const delta = chunk.choices[0]?.delta as
+            | (OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & {
+                reasoning?: string;
+                reasoning_content?: string;
+                reasoning_details?: Array<{
+                  type?: string;
+                  text?: string;
+                  summary?: string;
+                }>;
+              })
+            | undefined;
+
+          const reasoningText = extractReasoningText(delta);
+          const contentText = delta?.content;
+
+          if (streamReasoning) {
+            if (reasoningText) controller.enqueue(encodePart("reasoning", reasoningText));
+            if (contentText) controller.enqueue(encodePart("content", contentText));
+          } else if (contentText) {
+            controller.enqueue(new TextEncoder().encode(contentText));
+          }
         }
         controller.close();
       } catch (err) {
@@ -95,14 +127,15 @@ export async function POST(req: Request) {
       }
     },
     cancel() {
-      // Client aborted (user clicked Stop). The SDK will tear down the upstream
-      // request when this generator is no longer being read.
+      // Client aborted (user clicked Stop).
     },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Type": streamReasoning
+        ? "application/x-ndjson; charset=utf-8"
+        : "text/plain; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
     },

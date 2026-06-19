@@ -3,10 +3,19 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Markdown } from "@/components/markdown";
+import { ReasoningPanel } from "./reasoning-panel";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/types";
 
-export function MessageItem({ message }: { message: Message }) {
+export function MessageItem({
+  message,
+  isStreaming = false,
+  collapseReasoningByDefault = true,
+}: {
+  message: Message;
+  isStreaming?: boolean;
+  collapseReasoningByDefault?: boolean;
+}) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -17,11 +26,28 @@ export function MessageItem({ message }: { message: Message }) {
     );
   }
 
-  return <AssistantMessage message={message} />;
+  return (
+    <AssistantMessage
+      message={message}
+      isStreaming={isStreaming}
+      collapseReasoningByDefault={collapseReasoningByDefault}
+    />
+  );
 }
 
-function AssistantMessage({ message }: { message: Message }) {
+function AssistantMessage({
+  message,
+  isStreaming,
+  collapseReasoningByDefault,
+}: {
+  message: Message;
+  isStreaming: boolean;
+  collapseReasoningByDefault: boolean;
+}) {
   const [copied, setCopied] = useState(false);
+  const hasReasoning = Boolean(message.reasoning?.trim());
+  const hasContent = Boolean(message.content);
+  const isThinking = isStreaming && hasReasoning && !hasContent;
 
   const onCopy = async () => {
     try {
@@ -35,8 +61,20 @@ function AssistantMessage({ message }: { message: Message }) {
 
   return (
     <div className="group">
-      <Markdown content={message.content} />
-      {message.content && (
+      {hasReasoning && (
+        <ReasoningPanel
+          content={message.reasoning ?? ""}
+          isThinking={isThinking}
+          durationMs={message.reasoningDurationMs}
+          defaultOpen={!collapseReasoningByDefault}
+        />
+      )}
+
+      {hasContent && <Markdown content={message.content} />}
+
+      {!hasContent && !hasReasoning && isStreaming && <StreamingCursor />}
+
+      {hasContent && (
         <div className="mt-1.5 -ml-1 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"

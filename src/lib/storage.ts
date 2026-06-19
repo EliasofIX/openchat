@@ -11,6 +11,14 @@ const KEY_ACTIVE = "openchat:active-conversation";
 export const DEFAULT_SETTINGS: UserSettings = {
   name: "",
   customInstructions: "",
+  openRouterApiKey: "",
+  model: "",
+  reasoning: {
+    enabled: false,
+    effort: "medium",
+    showInResponse: true,
+    collapseByDefault: true,
+  },
 };
 
 function safeParse<T>(raw: string | null, fallback: T): T {
@@ -33,10 +41,18 @@ export const storage = {
   },
   loadSettings(): UserSettings {
     if (typeof window === "undefined") return DEFAULT_SETTINGS;
-    return safeParse<UserSettings>(
+    const stored = safeParse<Partial<UserSettings>>(
       localStorage.getItem(KEY_SETTINGS),
-      DEFAULT_SETTINGS,
+      {},
     );
+    return {
+      ...DEFAULT_SETTINGS,
+      ...stored,
+      reasoning: {
+        ...DEFAULT_SETTINGS.reasoning,
+        ...stored.reasoning,
+      },
+    };
   },
   saveSettings(value: UserSettings) {
     if (typeof window === "undefined") return;

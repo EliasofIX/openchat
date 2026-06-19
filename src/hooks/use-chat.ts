@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message } from "@/lib/types";
+import type { Message, ReasoningSettings } from "@/lib/types";
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -26,28 +26,69 @@ export type ChatStatus = "idle" | "streaming" | "error";
 export type UseChatOptions = {
   initialMessages?: Message[];
   systemPrompt?: string;
+  model?: string;
+  apiKey?: string;
+  reasoning?: ReasoningSettings;
   onFinish?: (assistantMessage: Message, allMessages: Message[]) => void;
+  onMessagesChange?: (messages: Message[]) => void;
 };
 
+type StreamPart = { p: "content" | "reasoning"; t: string };
+
+function isNdjsonStream(contentType: string | null): boolean {
+  return contentType?.includes("application/x-ndjson") ?? false;
+}
+
+function parseStreamLine(line: string): StreamPart | null {
+  try {
+    const parsed = JSON.parse(line) as StreamPart;
+    if (parsed.p === "content" || parsed.p === "reasoning") return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function toApiMessage(m: Message): { role: Message["role"]; content: string; reasoning?: string } {
+  if (m.role === "assistant" && m.reasoning) {
+    return { role: m.role, content: m.content, reasoning: m.reasoning };
+  }
+  return { role: m.role, content: m.content };
+}
+
 export function useChat(options: UseChatOptions = {}) {
-  const { systemPrompt, onFinish } = options;
+  const { systemPrompt, model, apiKey, reasoning, onFinish, onMessagesChange } = options;
 
   const [messages, setMessages] = useState<Message[]>(options.initialMessages ?? []);
   const [status, setStatus] = useState<ChatStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  // Latest values, available inside the long-running send() without
-  // re-creating the callback on every render.
   const messagesRef = useRef(messages);
   const systemPromptRef = useRef(systemPrompt);
+  const modelRef = useRef(model);
+  const apiKeyRef = useRef(apiKey);
+  const reasoningRef = useRef(reasoning);
   const onFinishRef = useRef(onFinish);
+  const onMessagesChangeRef = useRef(onMessagesChange);
   const abortRef = useRef<AbortController | null>(null);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { systemPromptRef.current = systemPrompt; }, [systemPrompt]);
+  useEffect(() => { modelRef.current = model; }, [model]);
+  useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
+  useEffect(() => { reasoningRef.current = reasoning; }, [reasoning]);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
+  useEffect(() => { onMessagesChangeRef.current = onMessagesChange; }, [onMessagesChange]);
 
-  // Replace state wholesale — used when switching conversations.
+  const schedulePersist = useCallback((next: Message[]) => {
+    if (!onMessagesChangeRef.current) return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      onMessagesChangeRef.current?.(next);
+    }, 500);
+  }, []);
+
   const setAll = useCallback((next: Message[]) => {
     setMessages(next);
     setStatus("idle");
@@ -83,17 +124,52 @@ export function useChat(options: UseChatOptions = {}) {
     abortRef.current = controller;
 
     let accumulated = "";
+    let accumulatedReasoning = "";
+    let reasoningStartedAt: number | null = null;
+    let reasoningDurationMs: number | undefined;
     let aborted = false;
 
+    const updateAssistant = (
+      content: string,
+      reasoningText?: string,
+      duration?: number,
+    ) => {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (!last || last.id !== assistantId) return prev;
+        const next = [
+          ...prev.slice(0, -1),
+          {
+            ...last,
+            content,
+            ...(reasoningText !== undefined ? { reasoning: reasoningText } : {}),
+            ...(duration !== undefined ? { reasoningDurationMs: duration } : {}),
+          },
+        ];
+        schedulePersist(next);
+        return next;
+      });
+    };
+
     try {
+      const payload: Record<string, unknown> = {
+        systemPrompt: systemPromptRef.current,
+        messages: baseMessages.map(toApiMessage),
+      };
+
+      const resolvedModel = modelRef.current?.trim();
+      if (resolvedModel) payload.model = resolvedModel;
+
+      const resolvedKey = apiKeyRef.current?.trim();
+      if (resolvedKey) payload.apiKey = resolvedKey;
+
+      if (reasoningRef.current) payload.reasoning = reasoningRef.current;
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({
-          systemPrompt: systemPromptRef.current,
-          messages: baseMessages.map((m) => ({ role: m.role, content: m.content })),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok || !res.body) {
@@ -103,18 +179,63 @@ export function useChat(options: UseChatOptions = {}) {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      const ndjson = isNdjsonStream(res.headers.get("Content-Type"));
+      let lineBuffer = "";
+
+      const applyPart = (part: StreamPart) => {
+        if (part.p === "reasoning") {
+          if (!reasoningStartedAt) reasoningStartedAt = Date.now();
+          accumulatedReasoning += part.t;
+        } else {
+          if (reasoningStartedAt && reasoningDurationMs === undefined) {
+            reasoningDurationMs = Date.now() - reasoningStartedAt;
+          }
+          accumulated += part.t;
+        }
+        updateAssistant(
+          accumulated,
+          accumulatedReasoning,
+          reasoningDurationMs,
+        );
+      };
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
+
         const chunk = decoder.decode(value, { stream: true });
         if (!chunk) continue;
-        accumulated += chunk;
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (!last || last.id !== assistantId) return prev;
-          return [...prev.slice(0, -1), { ...last, content: accumulated }];
-        });
+
+        if (ndjson) {
+          lineBuffer += chunk;
+          const lines = lineBuffer.split("\n");
+          lineBuffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const part = parseStreamLine(line);
+            if (!part) continue;
+            applyPart(part);
+          }
+        } else {
+          accumulated += chunk;
+          updateAssistant(accumulated);
+        }
+      }
+
+      if (ndjson && lineBuffer.trim()) {
+        const part = parseStreamLine(lineBuffer);
+        if (part) applyPart(part);
+      }
+
+      // Stream ended with reasoning but no content — still record duration.
+      if (
+        reasoningStartedAt &&
+        reasoningDurationMs === undefined &&
+        accumulatedReasoning
+      ) {
+        reasoningDurationMs = Date.now() - reasoningStartedAt;
+        updateAssistant(accumulated, accumulatedReasoning, reasoningDurationMs);
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") {
@@ -123,11 +244,9 @@ export function useChat(options: UseChatOptions = {}) {
         abortRef.current = null;
         setStatus("error");
         setError((err as Error).message);
-        // Drop the empty assistant placeholder so the UI doesn't show a blank
-        // bubble next to the error.
         setMessages((prev) => {
           const last = prev[prev.length - 1];
-          if (last && last.id === assistantId && last.content === "") {
+          if (last && last.id === assistantId && last.content === "" && !last.reasoning) {
             return prev.slice(0, -1);
           }
           return prev;
@@ -139,11 +258,10 @@ export function useChat(options: UseChatOptions = {}) {
     abortRef.current = null;
     setStatus("idle");
 
-    if (aborted && accumulated === "") {
-      // Stopped before any token streamed; drop the empty placeholder.
+    if (aborted && accumulated === "" && accumulatedReasoning === "") {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
-        if (last && last.id === assistantId && last.content === "") {
+        if (last && last.id === assistantId && last.content === "" && !last.reasoning) {
           return prev.slice(0, -1);
         }
         return prev;
@@ -155,11 +273,13 @@ export function useChat(options: UseChatOptions = {}) {
       id: assistantId,
       role: "assistant",
       content: accumulated,
+      ...(accumulatedReasoning ? { reasoning: accumulatedReasoning } : {}),
+      ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
       createdAt: Date.now(),
     };
     const finalMessages = [...baseMessages, finalAssistant];
     onFinishRef.current?.(finalAssistant, finalMessages);
-  }, []);
+  }, [schedulePersist]);
 
   return {
     messages,
