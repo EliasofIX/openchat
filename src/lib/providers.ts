@@ -17,6 +17,10 @@ export function getActiveModel(settings: UserSettings): string {
     : settings.model.trim();
 }
 
+export function getTitleModel(settings: UserSettings): string {
+  return settings.titleGeneration.model.trim();
+}
+
 export function getOpenRouterApiKey(settings: UserSettings): string {
   return settings.openRouterApiKey.trim();
 }

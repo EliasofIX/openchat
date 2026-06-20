@@ -2,10 +2,28 @@
 
 export type Role = "user" | "assistant" | "system";
 
+export type AttachmentKind = "image" | "pdf" | "code";
+
+export type MessageAttachment = {
+  id: string;
+  kind: AttachmentKind;
+  name: string;
+  mimeType: string;
+  dataUrl?: string;
+  textContent?: string;
+};
+
+export type PendingAttachment = MessageAttachment & {
+  status: "compressing" | "processing" | "ready" | "unsupported" | "error";
+  errorMessage?: string;
+  previewUrl?: string;
+};
+
 export type Message = {
   id: string;
   role: Role;
   content: string;
+  attachments?: MessageAttachment[];
   reasoning?: string;
   reasoningDurationMs?: number;
   createdAt: number;
@@ -17,6 +35,8 @@ export type Conversation = {
   messages: Message[];
   createdAt: number;
   updatedAt: number;
+  /** Set after the first AI-generated title is applied. */
+  aiTitleGenerated?: boolean;
 };
 
 export type ReasoningEffort =
@@ -36,6 +56,12 @@ export type ReasoningSettings = {
 
 export type ModelProvider = "openrouter" | "ollama";
 
+export type TitleGenerationSettings = {
+  enabled: boolean;
+  provider: ModelProvider;
+  model: string;
+};
+
 export type UserSettings = {
   name: string;
   customInstructions: string;
@@ -45,4 +71,5 @@ export type UserSettings = {
   ollamaBaseUrl: string;
   ollamaModel: string;
   reasoning: ReasoningSettings;
+  titleGeneration: TitleGenerationSettings;
 };

@@ -1,21 +1,12 @@
 "use client";
 
-// Manages the list of conversations + which one is active. Persists to
-// localStorage. Replace with a server/database backend if you add auth.
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Conversation, Message } from "@/lib/types";
+import { deriveFallbackTitle } from "@/lib/generate-title";
 import { storage } from "@/lib/storage";
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function deriveTitle(messages: Message[]): string {
-  const first = messages.find((m) => m.role === "user");
-  if (!first) return "New chat";
-  const t = first.content.trim().replace(/\s+/g, " ");
-  return t.length > 60 ? `${t.slice(0, 60)}…` : t || "New chat";
 }
 
 export function useConversations() {
@@ -47,28 +38,61 @@ export function useConversations() {
   }, []);
 
   const upsertActive = useCallback(
-    (messages: Message[]) => {
-      if (messages.length === 0) return;
+    (messages: Message[]): { id: string; aiTitleGenerated: boolean } | null => {
+      if (messages.length === 0) return null;
       const now = Date.now();
+      let result: { id: string; aiTitleGenerated: boolean } | null = null;
+
       setConversations((prev) => {
         const id = activeId ?? makeId();
+        const existing = prev.find((c) => c.id === id);
+
         if (!activeId) {
-          // Promote a new draft to a real conversation on the first message.
           setActiveId(id);
+          result = { id, aiTitleGenerated: false };
           return [
-            { id, title: deriveTitle(messages), messages, createdAt: now, updatedAt: now },
+            {
+              id,
+              title: deriveFallbackTitle(messages),
+              messages,
+              createdAt: now,
+              updatedAt: now,
+              aiTitleGenerated: false,
+            },
             ...prev,
           ];
         }
+
+        result = {
+          id,
+          aiTitleGenerated: existing?.aiTitleGenerated ?? false,
+        };
         return prev.map((c) =>
           c.id === id
-            ? { ...c, messages, updatedAt: now, title: c.title || deriveTitle(messages) }
+            ? {
+                ...c,
+                messages,
+                updatedAt: now,
+                title: c.aiTitleGenerated ? c.title : c.title || deriveFallbackTitle(messages),
+              }
             : c,
         );
       });
+
+      return result;
     },
     [activeId],
   );
+
+  const setAiTitle = useCallback((id: string, title: string) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? { ...c, title: title.trim() || c.title, aiTitleGenerated: true, updatedAt: Date.now() }
+          : c,
+      ),
+    );
+  }, []);
 
   const remove = useCallback(
     (id: string) => {
@@ -92,6 +116,7 @@ export function useConversations() {
     select: setActiveId,
     createNew,
     upsertActive,
+    setAiTitle,
     remove,
     rename,
   };

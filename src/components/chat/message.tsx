@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { FileCode2, FileText } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { ReasoningPanel } from "./reasoning-panel";
 import { cn } from "@/lib/utils";
-import type { Message } from "@/lib/types";
+import type { Message, MessageAttachment } from "@/lib/types";
 
 export function MessageItem({
   message,
@@ -17,10 +18,22 @@ export function MessageItem({
   collapseReasoningByDefault?: boolean;
 }) {
   if (message.role === "user") {
+    const hasAttachments = Boolean(message.attachments?.length);
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-primary-foreground whitespace-pre-wrap break-words text-[0.95rem] leading-7">
-          {message.content}
+        <div className="max-w-[80%] space-y-2">
+          {hasAttachments && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {message.attachments!.map((att) => (
+                <UserAttachment key={att.id} attachment={att} />
+              ))}
+            </div>
+          )}
+          {message.content && (
+            <div className="rounded-2xl bg-primary px-4 py-2.5 text-primary-foreground whitespace-pre-wrap break-words text-[0.95rem] leading-7">
+              {message.content}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -100,5 +113,27 @@ export function StreamingCursor() {
       aria-hidden
       className="ml-0.5 inline-block h-4 w-1.5 translate-y-[2px] animate-pulse rounded-sm bg-foreground/70 align-middle"
     />
+  );
+}
+
+function UserAttachment({ attachment: att }: { attachment: MessageAttachment }) {
+  if (att.kind === "image" && att.dataUrl) {
+    return (
+      <div className="overflow-hidden rounded-xl border border-primary-foreground/20">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={att.dataUrl}
+          alt={att.name}
+          className="max-h-48 max-w-full object-contain"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-primary-foreground/20 bg-primary/80 px-3 py-2 text-primary-foreground">
+      {att.kind === "pdf" ? <FileText size={14} /> : <FileCode2 size={14} />}
+      <span className="max-w-[12rem] truncate text-xs">{att.name}</span>
+    </div>
   );
 }

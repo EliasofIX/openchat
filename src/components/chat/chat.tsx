@@ -1,22 +1,63 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Brain, Menu, SquarePen } from "lucide-react";
 import { ChatInput } from "./chat-input";
 import { MessageItem } from "./message";
 import { SettingsDialog, type SettingsTab } from "./settings-dialog";
 import { Sidebar } from "./sidebar";
 import { useChat } from "@/hooks/use-chat";
+import { useAttachments } from "@/hooks/use-attachments";
 import { useConversations } from "@/hooks/use-conversations";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
+import { generateChatTitle, shouldGenerateAiTitle } from "@/lib/generate-title";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
+import type { Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function Chat() {
   const conv = useConversations();
   const settingsHook = useSettings();
   const systemPrompt = buildSystemPrompt(settingsHook.settings);
+  const settingsRef = useRef(settingsHook.settings);
+  const titleGenerationInFlight = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    settingsRef.current = settingsHook.settings;
+  }, [settingsHook.settings]);
+
+  const maybeGenerateTitle = useCallback(
+    async (
+      conversationId: string | null,
+      messages: Message[],
+      aiTitleGenerated?: boolean,
+    ) => {
+      if (!conversationId) return;
+      const settings = settingsRef.current;
+      if (
+        !shouldGenerateAiTitle(
+          messages,
+          aiTitleGenerated,
+          settings.titleGeneration.enabled,
+        )
+      ) {
+        return;
+      }
+      if (titleGenerationInFlight.current.has(conversationId)) return;
+
+      titleGenerationInFlight.current.add(conversationId);
+      try {
+        const title = await generateChatTitle(messages, settings);
+        conv.setAiTitle(conversationId, title);
+      } catch {
+        // Keep the fallback title if generation fails.
+      } finally {
+        titleGenerationInFlight.current.delete(conversationId);
+      }
+    },
+    [conv],
+  );
 
   const chat = useChat({
     systemPrompt,
@@ -25,9 +66,15 @@ export function Chat() {
     apiKey: settingsHook.settings.openRouterApiKey,
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
-    onFinish: (_msg, all) => conv.upsertActive(all),
+    onFinish: (_msg, all) => {
+      const saved = conv.upsertActive(all);
+      void maybeGenerateTitle(saved?.id ?? null, all, saved?.aiTitleGenerated);
+    },
     onMessagesChange: (msgs) => conv.upsertActive(msgs),
   });
+
+  const activeModel = getActiveModel(settingsHook.settings);
+  const attachmentsHook = useAttachments(activeModel);
 
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -61,8 +108,19 @@ export function Chat() {
 
   const onSubmit = () => {
     const text = input;
+    const files = attachmentsHook.readyAttachments.map(
+      ({ id, kind, name, mimeType, dataUrl, textContent }) => ({
+        id,
+        kind,
+        name,
+        mimeType,
+        dataUrl,
+        textContent,
+      }),
+    );
     setInput("");
-    chat.send(text);
+    attachmentsHook.clear();
+    chat.send(text, files);
   };
 
   const newChat = () => {
@@ -70,6 +128,7 @@ export function Chat() {
     chat.setMessages([]);
     conv.createNew();
     setInput("");
+    attachmentsHook.clear();
     setSidebarOpen(false);
   };
 
@@ -177,6 +236,12 @@ export function Chat() {
             onSubmit={onSubmit}
             onStop={chat.stop}
             isStreaming={chat.isStreaming}
+            attachments={attachmentsHook.attachments}
+            onAddFiles={(files) => void attachmentsHook.addFiles(files)}
+            onRemoveAttachment={attachmentsHook.remove}
+            onPaste={attachmentsHook.handlePaste}
+            isProcessingAttachments={attachmentsHook.isProcessing}
+            hasUnsupportedAttachments={attachmentsHook.hasUnsupported}
           />
           <p className="mt-2 text-center text-[10px] text-muted-foreground">
             The model can make mistakes. Verify important information.

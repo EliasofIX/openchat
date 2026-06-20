@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
-import type { ReasoningEffort, UserSettings } from "@/lib/types";
+import type { ReasoningEffort, TitleGenerationSettings, UserSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ProvidersSettings } from "./providers-settings";
+import { TitleSettings } from "./title-settings";
 import {
   SettingsField,
   SettingsSection,
@@ -46,6 +47,9 @@ export function SettingsDialog({
   const [reasoningEffort, setReasoningEffort] = useState(settings.reasoning.effort);
   const [showReasoning, setShowReasoning] = useState(settings.reasoning.showInResponse);
   const [collapseReasoning, setCollapseReasoning] = useState(settings.reasoning.collapseByDefault);
+  const [titleGeneration, setTitleGeneration] = useState<TitleGenerationSettings>(
+    settings.titleGeneration,
+  );
 
   useEffect(() => {
     if (open) {
@@ -61,6 +65,7 @@ export function SettingsDialog({
       setReasoningEffort(settings.reasoning.effort);
       setShowReasoning(settings.reasoning.showInResponse);
       setCollapseReasoning(settings.reasoning.collapseByDefault);
+      setTitleGeneration(settings.titleGeneration);
     }
   }, [open, settings, initialTab]);
 
@@ -79,6 +84,7 @@ export function SettingsDialog({
         showInResponse: showReasoning,
         collapseByDefault: collapseReasoning,
       },
+      titleGeneration,
     });
     onOpenChange(false);
   };
@@ -200,6 +206,16 @@ export function SettingsDialog({
                     </div>
                   )}
                 </SettingsSection>
+
+                <Separator />
+
+                <TitleSettings
+                  titleGeneration={titleGeneration}
+                  onTitleGenerationChange={(patch) =>
+                    setTitleGeneration((prev) => ({ ...prev, ...patch }))
+                  }
+                  ollamaBaseUrl={ollamaBaseUrl}
+                />
               </div>
             ) : (
               <ProvidersSettings

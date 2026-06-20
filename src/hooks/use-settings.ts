@@ -21,6 +21,9 @@ export function useSettings() {
         reasoning: patch.reasoning
           ? { ...prev.reasoning, ...patch.reasoning }
           : prev.reasoning,
+        titleGeneration: patch.titleGeneration
+          ? { ...prev.titleGeneration, ...patch.titleGeneration }
+          : prev.titleGeneration,
       };
       storage.saveSettings(next);
       return next;

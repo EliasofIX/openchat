@@ -22,6 +22,11 @@ export const DEFAULT_SETTINGS: UserSettings = {
     showInResponse: true,
     collapseByDefault: true,
   },
+  titleGeneration: {
+    enabled: true,
+    provider: "openrouter",
+    model: "google/gemini-2.0-flash-001",
+  },
 };
 
 function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
@@ -34,6 +39,10 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
     reasoning: {
       ...DEFAULT_SETTINGS.reasoning,
       ...stored.reasoning,
+    },
+    titleGeneration: {
+      ...DEFAULT_SETTINGS.titleGeneration,
+      ...stored.titleGeneration,
     },
   };
 }

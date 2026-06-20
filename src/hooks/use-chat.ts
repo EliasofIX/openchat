@@ -15,7 +15,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message, ModelProvider, ReasoningSettings } from "@/lib/types";
+import { buildApiContent } from "@/lib/build-api-content";
+import type { Message, MessageAttachment, ModelProvider, ReasoningSettings } from "@/lib/types";
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -51,11 +52,20 @@ function parseStreamLine(line: string): StreamPart | null {
   }
 }
 
-function toApiMessage(m: Message): { role: Message["role"]; content: string; reasoning?: string } {
+function toApiMessage(m: Message): {
+  role: Message["role"];
+  content: ReturnType<typeof buildApiContent>;
+  reasoning?: string;
+} {
+  const content =
+    m.role === "user" && m.attachments?.length
+      ? buildApiContent(m.content, m.attachments)
+      : m.content;
+
   if (m.role === "assistant" && m.reasoning) {
-    return { role: m.role, content: m.content, reasoning: m.reasoning };
+    return { role: m.role, content, reasoning: m.reasoning };
   }
-  return { role: m.role, content: m.content };
+  return { role: m.role, content };
 }
 
 export function useChat(options: UseChatOptions = {}) {
@@ -106,14 +116,16 @@ export function useChat(options: UseChatOptions = {}) {
     abortRef.current = null;
   }, []);
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, attachments: MessageAttachment[] = []) => {
     const trimmed = text.trim();
-    if (!trimmed || abortRef.current) return;
+    const hasAttachments = attachments.length > 0;
+    if ((!trimmed && !hasAttachments) || abortRef.current) return;
 
     const userMessage: Message = {
       id: makeId(),
       role: "user",
       content: trimmed,
+      ...(hasAttachments ? { attachments } : {}),
       createdAt: Date.now(),
     };
     const assistantId = makeId();
