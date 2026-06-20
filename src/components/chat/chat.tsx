@@ -8,6 +8,7 @@ import { SettingsDialog, type SettingsTab } from "./settings-dialog";
 import { Sidebar } from "./sidebar";
 import { useChat } from "@/hooks/use-chat";
 import { useAttachments } from "@/hooks/use-attachments";
+import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
 import { generateChatTitle, shouldGenerateAiTitle } from "@/lib/generate-title";
@@ -74,7 +75,17 @@ export function Chat() {
   });
 
   const activeModel = getActiveModel(settingsHook.settings);
-  const attachmentsHook = useAttachments(activeModel);
+  const modelCapabilities = useModelCapabilities({
+    provider: settingsHook.settings.provider,
+    model: activeModel,
+    apiKey: settingsHook.settings.openRouterApiKey,
+    ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
+  });
+  const attachmentsHook = useAttachments(
+    activeModel,
+    modelCapabilities.capabilities,
+    modelCapabilities.loading,
+  );
 
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);

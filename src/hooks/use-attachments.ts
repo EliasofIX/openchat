@@ -9,8 +9,8 @@ import {
 } from "@/lib/attachments";
 import {
   attachmentSupported,
-  getModelCapabilities,
   unsupportedReason,
+  type ModelCapabilities,
 } from "@/lib/model-capabilities";
 import type { MessageAttachment, PendingAttachment } from "@/lib/types";
 
@@ -34,19 +34,42 @@ function toReady(
   return { ...att, status: "ready", previewUrl: att.dataUrl };
 }
 
-export function useAttachments(model: string) {
+function isSupported(
+  kind: MessageAttachment["kind"],
+  capabilities: ModelCapabilities,
+  capabilitiesLoading: boolean,
+): boolean {
+  if (kind !== "image") return true;
+  if (capabilitiesLoading) return true;
+  return attachmentSupported(kind, capabilities);
+}
+
+export function useAttachments(
+  model: string,
+  capabilities: ModelCapabilities,
+  capabilitiesLoading: boolean,
+) {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const modelRef = useRef(model);
+  const capabilitiesRef = useRef(capabilities);
+  const loadingRef = useRef(capabilitiesLoading);
 
   useEffect(() => {
     modelRef.current = model;
-    const caps = getModelCapabilities(model);
+  }, [model]);
+
+  useEffect(() => {
+    capabilitiesRef.current = capabilities;
+    loadingRef.current = capabilitiesLoading;
+
+    if (capabilitiesLoading) return;
+
     setAttachments((prev) =>
       prev.map((att) => {
         if (att.status === "compressing" || att.status === "processing" || att.status === "error") {
           return att;
         }
-        const supported = attachmentSupported(att.kind, caps);
+        const supported = attachmentSupported(att.kind, capabilities);
         if (supported && att.status === "unsupported") {
           return { ...att, status: "ready", errorMessage: undefined };
         }
@@ -60,7 +83,7 @@ export function useAttachments(model: string) {
         return att;
       }),
     );
-  }, [model]);
+  }, [capabilities, capabilitiesLoading, model]);
 
   const remove = useCallback((id: string) => {
     setAttachments((prev) => {
@@ -114,9 +137,10 @@ export function useAttachments(model: string) {
 
       try {
         const result = await fileToAttachment(file);
-        const supported = attachmentSupported(
+        const supported = isSupported(
           result.kind,
-          getModelCapabilities(modelRef.current),
+          capabilitiesRef.current,
+          loadingRef.current,
         );
 
         setAttachments((prev) =>
