@@ -17,7 +17,7 @@ import type { ModelProvider, ReasoningSettings } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL ?? "openai/gpt-4o-mini";
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL ?? "x-ai/grok-4.3";
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Open AI Chat UI";

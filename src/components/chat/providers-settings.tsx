@@ -156,7 +156,7 @@ export function ProvidersSettings({
               type="text"
               value={model}
               onChange={(e) => onModelChange(e.target.value)}
-              placeholder="openai/gpt-4o-mini"
+              placeholder="x-ai/grok-4.3"
               className="font-mono text-xs"
               spellCheck={false}
             />

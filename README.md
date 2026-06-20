@@ -4,7 +4,7 @@ A minimal, **forkable** open-source AI chat UI.
 
 - Next.js 16 (App Router) + TypeScript
 - Tailwind v4 + shadcn-style tokens
-- The `openai` SDK pointed at **OpenRouter** (any OpenAI-compatible endpoint works)
+- **OpenRouter** by default (swap to Ollama, Anthropic, Groq, or your own endpoint)
 - Streaming, Markdown + LaTeX, code-block copy, dark mode, conversation history
 - No Vercel AI SDK, no LangChain, no magic — ~100 lines of streaming code
 
@@ -68,8 +68,8 @@ There is **no SSE framing, no JSON envelopes, no SDK** between the model and the
 browser. The flow is just:
 
 1. The client `POST`s the conversation history to `/api/chat`.
-2. The route handler calls `openai.chat.completions.create({ stream: true })`
-   against the OpenRouter base URL.
+2. The route handler calls the OpenRouter chat completions API with streaming
+   enabled.
 3. For each upstream chunk, the handler enqueues `delta.content` as raw UTF-8
    onto a `ReadableStream` and returns it.
 4. The client reads `response.body` with `getReader()` + `TextDecoder` and
@@ -83,28 +83,19 @@ exactly what's happening.
 
 ## Swapping providers
 
-Want to use OpenAI directly, Anthropic, Groq, an Ollama instance on your laptop,
-or your own inference endpoint? Edit **one file**: `src/app/api/chat/route.ts`.
+Want to use Anthropic, Groq, an Ollama instance on your laptop, or your own
+inference endpoint? Edit **one file**: `src/app/api/chat/route.ts`.
 
-### OpenAI directly
-
-```ts
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-// remove baseURL + defaultHeaders
-```
-
-### Local Ollama (or any OpenAI-compatible server)
+### Local Ollama (or any compatible chat API server)
 
 ```ts
-const client = new OpenAI({
-  apiKey: "ollama",
-  baseURL: "http://localhost:11434/v1",
-});
+const client = createOllamaClient("http://localhost:11434");
+// streams through the same ReadableStream pattern
 ```
 
 ### Anthropic, Gemini, Bedrock, …
 
-Replace the `openai` SDK call with the provider's SDK and stream their chunks
+Replace the provider client call with the provider's SDK and stream their chunks
 through the same `ReadableStream` pattern. The client doesn't care what's
 producing the bytes.
 
@@ -118,9 +109,9 @@ the template).
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `OPENROUTER_API_KEY` | yes | — | Your OpenRouter API key. Server-only. |
-| `DEFAULT_MODEL` | no | `openai/gpt-4o-mini` | Any OpenRouter model id. |
+| `DEFAULT_MODEL` | no | `x-ai/grok-4.3` | Any OpenRouter model id. |
 | `NEXT_PUBLIC_SITE_URL` | no | `http://localhost:3000` | Sent as `HTTP-Referer`. |
-| `NEXT_PUBLIC_SITE_NAME` | no | `Open AI Chat UI` | Sent as `X-Title`. |
+| `NEXT_PUBLIC_SITE_NAME` | no | `Open Chat` | Sent as `X-Title`. |
 
 The API key never leaves the server — the browser only ever talks to
 `/api/chat`.
@@ -149,7 +140,7 @@ you can add what fits your stack:
 - **Server-side persistence.** Swap `src/lib/storage.ts` for a database.
 - **Model picker UI.** The API already accepts `model` per request — wire a
   dropdown to it.
-- **Tool calling / function calling.** Add `tools` to the OpenAI call.
+- **Tool calling / function calling.** Add `tools` to the chat completions call.
 - **File uploads / vision.** Extend the `messages` payload with image parts.
 - **Syntax highlighting.** Drop in `shiki` or `react-syntax-highlighter` inside
   `markdown.tsx` if you want highlighted code.
