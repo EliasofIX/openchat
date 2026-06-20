@@ -26,18 +26,37 @@ export function shouldGenerateAiTitle(
   if (!enabled || aiTitleGenerated) return false;
   const userCount = messages.filter((m) => m.role === "user").length;
   const assistantCount = messages.filter(
-    (m) => m.role === "assistant" && m.content.trim(),
+    (m) =>
+      m.role === "assistant" &&
+      (m.content.trim().length > 0 || (m.reasoning?.trim().length ?? 0) > 0),
   ).length;
   return userCount >= 1 && assistantCount >= 1;
+}
+
+function messageTextForTitle(m: Message): string {
+  const text = m.content.trim();
+  if (text) return text.slice(0, 500);
+
+  const att = m.attachments?.[0];
+  if (!att) return "";
+
+  if (att.kind === "image") return `[Image: ${att.name}]`;
+  if (att.kind === "pdf") return `[PDF: ${att.name}]`;
+  return `[File: ${att.name}]`;
 }
 
 function formatMessagesForTitle(messages: Message[]): string {
   return messages
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => {
-      const text = m.content.trim().slice(0, 500);
-      return `${m.role === "user" ? "User" : "Assistant"}: ${text}`;
+      const text = messageTextForTitle(m);
+      const reasoning =
+        m.role === "assistant" && m.reasoning?.trim()
+          ? `\nThinking: ${m.reasoning.trim().slice(0, 200)}`
+          : "";
+      return `${m.role === "user" ? "User" : "Assistant"}: ${text}${reasoning}`;
     })
+    .filter((line) => !line.endsWith(": "))
     .join("\n\n");
 }
 
@@ -52,12 +71,25 @@ export async function generateChatTitle(
   messages: Message[],
   settings: UserSettings,
 ): Promise<string> {
+  const formatted = formatMessagesForTitle(messages);
+  if (!formatted.trim()) {
+    throw new Error("No message content available for title generation.");
+  }
+
+  const titleProvider = settings.titleGeneration.provider;
+  const titleModel = resolveTitleModel(settings);
+
   const payload = {
-    messages: formatMessagesForTitle(messages),
-    provider: settings.titleGeneration.provider,
-    model: getTitleModel(settings),
+    messages: formatted,
+    provider: titleProvider,
+    model: titleModel,
     apiKey: getOpenRouterApiKey(settings) || undefined,
     ollamaBaseUrl: getOllamaBaseUrl(settings),
+    fallbackProvider: settings.provider,
+    fallbackModel:
+      settings.provider === "ollama"
+        ? settings.ollamaModel.trim()
+        : settings.model.trim(),
   };
 
   const res = await fetch("/api/generate-title", {
@@ -73,4 +105,13 @@ export async function generateChatTitle(
 
   const data = (await res.json()) as { title: string };
   return sanitizeTitle(data.title);
+}
+
+function resolveTitleModel(settings: UserSettings): string {
+  const configured = getTitleModel(settings);
+  if (configured) return configured;
+  if (settings.titleGeneration.provider === "ollama") {
+    return settings.ollamaModel.trim();
+  }
+  return configured;
 }

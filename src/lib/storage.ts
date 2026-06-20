@@ -30,20 +30,30 @@ export const DEFAULT_SETTINGS: UserSettings = {
 };
 
 function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
+  const provider = stored.provider ?? DEFAULT_SETTINGS.provider;
+  const titleStored = stored.titleGeneration;
+
+  const titleGeneration: UserSettings["titleGeneration"] = {
+    enabled: titleStored?.enabled ?? DEFAULT_SETTINGS.titleGeneration.enabled,
+    provider: titleStored?.provider ?? provider,
+    model: titleStored?.model?.trim()
+      ? titleStored.model
+      : provider === "ollama"
+        ? (stored.ollamaModel?.trim() || DEFAULT_SETTINGS.titleGeneration.model)
+        : DEFAULT_SETTINGS.titleGeneration.model,
+  };
+
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
-    provider: stored.provider ?? DEFAULT_SETTINGS.provider,
+    provider,
     ollamaBaseUrl: stored.ollamaBaseUrl ?? DEFAULT_SETTINGS.ollamaBaseUrl,
     ollamaModel: stored.ollamaModel ?? DEFAULT_SETTINGS.ollamaModel,
     reasoning: {
       ...DEFAULT_SETTINGS.reasoning,
       ...stored.reasoning,
     },
-    titleGeneration: {
-      ...DEFAULT_SETTINGS.titleGeneration,
-      ...stored.titleGeneration,
-    },
+    titleGeneration,
   };
 }
 
