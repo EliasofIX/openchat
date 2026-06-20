@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, FileCode2, FileText, Loader2, X } from "lucide-react";
+import { AlertCircle, FileCode2, FileText, Loader2, X } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { PendingAttachment } from "@/lib/types";
 

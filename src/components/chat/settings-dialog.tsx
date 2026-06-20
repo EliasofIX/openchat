@@ -1,9 +1,9 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
-import { Brain, User, X } from "lucide-react";
+import { Brain, User, X } from "@/components/icons";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogPanel } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
@@ -90,160 +90,150 @@ export function SettingsDialog({
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay
-          className={cn(
-            "fixed inset-0 z-40 bg-black/50 backdrop-blur-sm",
-            "data-[state=open]:animate-in data-[state=open]:fade-in-0",
-            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
-          )}
-        />
-        <Dialog.Content
-          className={cn(
-            "fixed left-1/2 top-1/2 z-50 flex w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col",
-            "max-h-[min(90dvh,720px)] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl outline-none",
-            "data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=open]:fade-in-0",
-            "data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=closed]:fade-out-0",
-          )}
-        >
-          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6 sm:py-5">
-            <div className="min-w-0 pr-2">
-              <Dialog.Title className="text-base font-semibold">Settings</Dialog.Title>
-              <Dialog.Description className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Stored locally in your browser. API keys stay on this device until sent to your
-                chosen provider.
-              </Dialog.Description>
-              <div className="mt-3 flex gap-1.5">
-                <SettingsTabButton active={tab === "general"} onClick={() => setTab("general")}>
-                  General
-                </SettingsTabButton>
-                <SettingsTabButton active={tab === "providers"} onClick={() => setTab("providers")}>
-                  Model providers
-                </SettingsTabButton>
-              </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPanel>
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0 pr-2">
+            <h2 className="text-base font-semibold">Settings</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Stored locally in your browser. API keys stay on this device until sent to your
+              chosen provider.
+            </p>
+            <div className="mt-3 flex gap-1.5">
+              <SettingsTabButton active={tab === "general"} onClick={() => setTab("general")}>
+                General
+              </SettingsTabButton>
+              <SettingsTabButton active={tab === "providers"} onClick={() => setTab("providers")}>
+                Model providers
+              </SettingsTabButton>
             </div>
-            <Dialog.Close
-              aria-label="Close"
-              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
-            >
-              <X size={16} />
-            </Dialog.Close>
           </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => onOpenChange(false)}
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <X size={16} />
+          </button>
+        </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
-            {tab === "general" ? (
-              <div className="space-y-6">
-                <SettingsSection
-                  icon={User}
-                  title="Personalization"
-                  description="How the assistant addresses you."
-                >
-                  <SettingsField label="Your name">
-                    <Input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Ada"
-                    />
-                  </SettingsField>
-                  <SettingsField label="Custom instructions">
-                    <textarea
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder="Tone, format, things to remember about you…"
-                      rows={3}
-                      className={cn(
-                        "w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none",
-                        "placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                      )}
-                    />
-                  </SettingsField>
-                </SettingsSection>
-
-                <Separator />
-
-                <SettingsSection
-                  icon={Brain}
-                  title="Reasoning"
-                  description="Extended thinking for supported models (o-series, DeepSeek R1, Qwen thinking, etc.)."
-                >
-                  <SettingsToggleRow
-                    label="Enable reasoning"
-                    description="Let the model think before answering."
-                    checked={reasoningEnabled}
-                    onChange={setReasoningEnabled}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+          {tab === "general" ? (
+            <div className="space-y-6">
+              <SettingsSection
+                icon={User}
+                title="Personalization"
+                description="How the assistant addresses you."
+              >
+                <SettingsField label="Your name">
+                  <Input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Ada"
                   />
+                </SettingsField>
+                <SettingsField label="Custom instructions">
+                  <textarea
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="Tone, format, things to remember about you…"
+                    rows={3}
+                    className={cn(
+                      "w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none",
+                      "placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                    )}
+                  />
+                </SettingsField>
+              </SettingsSection>
 
-                  {reasoningEnabled && (
-                    <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
-                      <SettingsField label="Effort">
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {REASONING_EFFORTS.map((effort) => (
-                            <EffortButton
-                              key={effort}
-                              effort={effort}
-                              selected={reasoningEffort === effort}
-                              onSelect={() => setReasoningEffort(effort)}
-                            />
-                          ))}
-                        </div>
-                      </SettingsField>
+              <Separator />
 
-                      <SettingsToggleRow
-                        label="Show reasoning in chat"
-                        description="Display the model's thinking above its reply."
-                        checked={showReasoning}
-                        onChange={setShowReasoning}
-                      />
-
-                      <SettingsToggleRow
-                        label="Collapse reasoning by default"
-                        description="Hide thinking once the answer appears. Expand any message manually."
-                        checked={collapseReasoning}
-                        onChange={setCollapseReasoning}
-                      />
-                    </div>
-                  )}
-                </SettingsSection>
-
-                <Separator />
-
-                <TitleSettings
-                  titleGeneration={titleGeneration}
-                  onTitleGenerationChange={(patch) =>
-                    setTitleGeneration((prev) => ({ ...prev, ...patch }))
-                  }
-                  ollamaBaseUrl={ollamaBaseUrl}
+              <SettingsSection
+                icon={Brain}
+                title="Reasoning"
+                description="Extended thinking for supported models (o-series, DeepSeek R1, Qwen thinking, etc.)."
+              >
+                <SettingsToggleRow
+                  label="Enable reasoning"
+                  description="Let the model think before answering."
+                  checked={reasoningEnabled}
+                  onChange={setReasoningEnabled}
                 />
-              </div>
-            ) : (
-              <ProvidersSettings
-                provider={provider}
-                onProviderChange={setProvider}
-                apiKey={apiKey}
-                onApiKeyChange={setApiKey}
-                model={model}
-                onModelChange={setModel}
-                ollamaBaseUrl={ollamaBaseUrl}
-                onOllamaBaseUrlChange={setOllamaBaseUrl}
-                ollamaModel={ollamaModel}
-                onOllamaModelChange={setOllamaModel}
-              />
-            )}
-          </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-5 py-4 sm:px-6">
-            <Dialog.Close className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground">
-              Cancel
-            </Dialog.Close>
-            <Button type="button" size="sm" onClick={save}>
-              Save changes
-            </Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+                {reasoningEnabled && (
+                  <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
+                    <SettingsField label="Effort">
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {REASONING_EFFORTS.map((effort) => (
+                          <EffortButton
+                            key={effort}
+                            effort={effort}
+                            selected={reasoningEffort === effort}
+                            onSelect={() => setReasoningEffort(effort)}
+                          />
+                        ))}
+                      </div>
+                    </SettingsField>
+
+                    <SettingsToggleRow
+                      label="Show reasoning in chat"
+                      description="Display the model's thinking above its reply."
+                      checked={showReasoning}
+                      onChange={setShowReasoning}
+                    />
+
+                    <SettingsToggleRow
+                      label="Collapse reasoning by default"
+                      description="Hide thinking once the answer appears. Expand any message manually."
+                      checked={collapseReasoning}
+                      onChange={setCollapseReasoning}
+                    />
+                  </div>
+                )}
+              </SettingsSection>
+
+              <Separator />
+
+              <TitleSettings
+                titleGeneration={titleGeneration}
+                onTitleGenerationChange={(patch) =>
+                  setTitleGeneration((prev) => ({ ...prev, ...patch }))
+                }
+                ollamaBaseUrl={ollamaBaseUrl}
+              />
+            </div>
+          ) : (
+            <ProvidersSettings
+              provider={provider}
+              onProviderChange={setProvider}
+              apiKey={apiKey}
+              onApiKeyChange={setApiKey}
+              model={model}
+              onModelChange={setModel}
+              ollamaBaseUrl={ollamaBaseUrl}
+              onOllamaBaseUrlChange={setOllamaBaseUrl}
+              ollamaModel={ollamaModel}
+              onOllamaModelChange={setOllamaModel}
+            />
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <Button type="button" size="sm" onClick={save}>
+            Save changes
+          </Button>
+        </div>
+      </DialogPanel>
+    </Dialog>
   );
 }
 

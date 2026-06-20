@@ -1,0 +1,83 @@
+/* Minimal animation utilities for dialogs and sidebar (replaces tw-animate-css) */
+
+@keyframes oc-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes oc-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes oc-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes oc-slide-out-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes oc-zoom-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes oc-zoom-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+}
+
+.oc-animate-fade-in {
+  animation: oc-fade-in 0.15s ease forwards;
+}
+
+.oc-animate-fade-out {
+  animation: oc-fade-out 0.15s ease forwards;
+}
+
+.oc-animate-slide-in-left {
+  animation: oc-slide-in-left 0.2s ease forwards;
+}
+
+.oc-animate-slide-out-left {
+  animation: oc-slide-out-left 0.2s ease forwards;
+}
+
+.oc-animate-zoom-in {
+  animation: oc-zoom-in 0.15s ease forwards;
+}
+
+.oc-animate-zoom-out {
+  animation: oc-zoom-out 0.15s ease forwards;
+}
