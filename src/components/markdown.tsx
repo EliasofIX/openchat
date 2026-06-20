@@ -3,18 +3,20 @@
 // Streaming-friendly markdown renderer for assistant replies.
 //
 //   • GitHub-flavored markdown (tables, strikethrough, task lists)
-//   • LaTeX via KaTeX — inline `$x^2$` and block `$$ … $$`
+//   • LaTeX via KaTeX — `$…$`, `$$…$$`, `\(...\)`, `\[...\]`, and ```latex fences
 //   • Code blocks with a copy button
 //
 // We memoize on `content` so re-rendering during streaming is cheap even when
 // the parent re-renders for unrelated reasons.
 
-import { memo, useState, type ComponentPropsWithoutRef } from "react";
+import { memo, useMemo, useState, type ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Check, Copy } from "lucide-react";
+import { isMathCodeClassName, isMathCodeLanguage, MathBlock } from "@/components/math-block";
+import { preprocessMathMarkdown } from "@/lib/preprocess-math";
 import { cn } from "@/lib/utils";
 
 function CodeBlock({ className, children }: { className?: string; children: string }) {
@@ -55,6 +57,8 @@ function CodeBlock({ className, children }: { className?: string; children: stri
 type CodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
 function MarkdownInner({ content }: { content: string }) {
+  const processedContent = useMemo(() => preprocessMathMarkdown(content), [content]);
+
   return (
     <div
       className={cn(
@@ -73,6 +77,7 @@ function MarkdownInner({ content }: { content: string }) {
         "[&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm",
         "[&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-medium [&_th]:bg-muted/60",
         "[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-1.5",
+        "[&_.katex-display]:my-0",
       )}
     >
       <ReactMarkdown
@@ -82,6 +87,17 @@ function MarkdownInner({ content }: { content: string }) {
           code(props) {
             const { inline, className, children, ...rest } = props as CodeProps;
             const text = String(children ?? "").replace(/\n$/, "");
+
+            if (isMathCodeClassName(className)) {
+              const display =
+                !inline &&
+                (className?.includes("math-display") ||
+                  isMathCodeLanguage(className) ||
+                  text.includes("\n") ||
+                  /\\begin\{/.test(text));
+              return <MathBlock content={text} display={display} />;
+            }
+
             if (inline) {
               return (
                 <code
@@ -100,7 +116,7 @@ function MarkdownInner({ content }: { content: string }) {
           },
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

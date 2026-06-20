@@ -128,3 +128,29 @@
     @apply font-sans;
   }
 }
+
+/* KaTeX — theme-aware math rendering */
+.prose-chat .katex {
+  color: inherit;
+  font-size: 1.05em;
+}
+
+.prose-chat .katex-display {
+  @apply my-4 overflow-x-auto rounded-lg border border-border/60 bg-muted/30 px-4 py-3;
+}
+
+.math-display-block {
+  @apply my-4 overflow-x-auto rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-center;
+}
+
+.math-display-block > .katex-display {
+  margin: 0;
+}
+
+.math-inline {
+  @apply mx-0.5;
+}
+
+.katex-error {
+  @apply rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-[0.85em] text-destructive;
+}
