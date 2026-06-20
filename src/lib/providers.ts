@@ -21,6 +21,13 @@ export function getTitleModel(settings: UserSettings): string {
   return settings.titleGeneration.model.trim();
 }
 
+/** Model used for title generation — falls back to the active chat model. */
+export function resolveTitleModel(settings: UserSettings): string {
+  const configured = getTitleModel(settings);
+  if (configured) return configured;
+  return getActiveModel(settings);
+}
+
 export function getOpenRouterApiKey(settings: UserSettings): string {
   return settings.openRouterApiKey.trim();
 }

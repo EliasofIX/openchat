@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Brain, Menu, SquarePen } from "lucide-react";
 import { ChatInput } from "./chat-input";
 import { MessageItem } from "./message";
@@ -11,10 +11,8 @@ import { useAttachments } from "@/hooks/use-attachments";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
-import { generateChatTitle, shouldGenerateAiTitle } from "@/lib/generate-title";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
-import type { Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function Chat() {
@@ -22,43 +20,16 @@ export function Chat() {
   const settingsHook = useSettings();
   const systemPrompt = buildSystemPrompt(settingsHook.settings);
   const settingsRef = useRef(settingsHook.settings);
-  const titleGenerationInFlight = useRef<Set<string>>(new Set());
+  const convRef = useRef(conv);
+  const lastUpsertRef = useRef<{ id: string; aiTitleGenerated: boolean } | null>(null);
 
   useEffect(() => {
     settingsRef.current = settingsHook.settings;
   }, [settingsHook.settings]);
 
-  const maybeGenerateTitle = useCallback(
-    async (
-      conversationId: string | null,
-      messages: Message[],
-      aiTitleGenerated?: boolean,
-    ) => {
-      if (!conversationId) return;
-      const settings = settingsRef.current;
-      if (
-        !shouldGenerateAiTitle(
-          messages,
-          aiTitleGenerated,
-          settings.titleGeneration.enabled,
-        )
-      ) {
-        return;
-      }
-      if (titleGenerationInFlight.current.has(conversationId)) return;
-
-      titleGenerationInFlight.current.add(conversationId);
-      try {
-        const title = await generateChatTitle(messages, settings);
-        conv.setAiTitle(conversationId, title);
-      } catch {
-        // Keep the fallback title if generation fails.
-      } finally {
-        titleGenerationInFlight.current.delete(conversationId);
-      }
-    },
-    [conv],
-  );
+  useEffect(() => {
+    convRef.current = conv;
+  }, [conv]);
 
   const chat = useChat({
     systemPrompt,
@@ -68,10 +39,16 @@ export function Chat() {
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
     onFinish: (_msg, all) => {
-      const saved = conv.upsertActive(all);
-      void maybeGenerateTitle(saved?.id ?? null, all, saved?.aiTitleGenerated);
+      const saved = lastUpsertRef.current;
+      void convRef.current.maybeGenerateTitle(
+        saved?.id ?? null,
+        all,
+        settingsRef.current,
+      );
     },
-    onMessagesChange: (msgs) => conv.upsertActive(msgs),
+    onMessagesChange: (msgs) => {
+      lastUpsertRef.current = convRef.current.upsertActive(msgs);
+    },
   });
 
   const activeModel = getActiveModel(settingsHook.settings);
@@ -138,6 +115,7 @@ export function Chat() {
     chat.stop();
     chat.setMessages([]);
     conv.createNew();
+    lastUpsertRef.current = null;
     setInput("");
     attachmentsHook.clear();
     setSidebarOpen(false);

@@ -112,7 +112,7 @@ export function TitleSettings({
                 type="text"
                 value={titleGeneration.model}
                 onChange={(e) => onTitleGenerationChange({ model: e.target.value })}
-                placeholder="google/gemini-2.0-flash-001"
+                placeholder="Same as chat model"
                 className="font-mono text-xs"
                 spellCheck={false}
               />

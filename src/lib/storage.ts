@@ -25,9 +25,28 @@ export const DEFAULT_SETTINGS: UserSettings = {
   titleGeneration: {
     enabled: true,
     provider: "openrouter",
-    model: "google/gemini-2.0-flash-001",
+    model: "",
   },
 };
+
+const LEGACY_DEFAULT_TITLE_MODEL = "google/gemini-2.0-flash-001";
+
+function resolveStoredTitleModel(
+  titleStored: Partial<UserSettings["titleGeneration"]> | undefined,
+  provider: UserSettings["provider"],
+  stored: Partial<UserSettings>,
+): string {
+  const storedTitle = titleStored?.model?.trim() ?? "";
+  const chatModel =
+    provider === "ollama"
+      ? (stored.ollamaModel?.trim() ?? "")
+      : (stored.model?.trim() ?? "");
+
+  if (!storedTitle || storedTitle === LEGACY_DEFAULT_TITLE_MODEL) {
+    return chatModel;
+  }
+  return storedTitle;
+}
 
 function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
   const provider = stored.provider ?? DEFAULT_SETTINGS.provider;
@@ -36,11 +55,7 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
   const titleGeneration: UserSettings["titleGeneration"] = {
     enabled: titleStored?.enabled ?? DEFAULT_SETTINGS.titleGeneration.enabled,
     provider: titleStored?.provider ?? provider,
-    model: titleStored?.model?.trim()
-      ? titleStored.model
-      : provider === "ollama"
-        ? (stored.ollamaModel?.trim() || DEFAULT_SETTINGS.titleGeneration.model)
-        : DEFAULT_SETTINGS.titleGeneration.model,
+    model: resolveStoredTitleModel(titleStored, provider, stored),
   };
 
   return {

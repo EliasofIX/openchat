@@ -73,30 +73,34 @@ export function useConversations() {
       };
 
       setConversations((prev) => {
-        if (isNew) {
-          return [
-            {
-              id,
-              title: deriveFallbackTitle(messages),
-              messages,
-              createdAt: now,
-              updatedAt: now,
-              aiTitleGenerated: false,
-            },
-            ...prev,
-          ];
-        }
-
-        return prev.map((c) =>
-          c.id === id
-            ? {
-                ...c,
+        const next = isNew
+          ? [
+              {
+                id,
+                title: deriveFallbackTitle(messages),
                 messages,
+                createdAt: now,
                 updatedAt: now,
-                title: c.aiTitleGenerated ? c.title : c.title || deriveFallbackTitle(messages),
-              }
-            : c,
-        );
+                aiTitleGenerated: false,
+              },
+              ...prev,
+            ]
+          : prev.map((c) =>
+              c.id === id
+                ? {
+                    ...c,
+                    messages,
+                    updatedAt: now,
+                    title:
+                      c.aiTitleGenerated || titleGenerationInFlight.current.has(id)
+                        ? c.title
+                        : c.title || deriveFallbackTitle(messages),
+                  }
+                : c,
+            );
+
+        conversationsRef.current = next;
+        return next;
       });
 
       return result;
@@ -105,13 +109,15 @@ export function useConversations() {
   );
 
   const setAiTitle = useCallback((id: string, title: string) => {
-    setConversations((prev) =>
-      prev.map((c) =>
+    setConversations((prev) => {
+      const next = prev.map((c) =>
         c.id === id
           ? { ...c, title: title.trim() || c.title, aiTitleGenerated: true, updatedAt: Date.now() }
           : c,
-      ),
-    );
+      );
+      conversationsRef.current = next;
+      return next;
+    });
   }, []);
 
   const maybeGenerateTitle = useCallback(
@@ -119,13 +125,14 @@ export function useConversations() {
       conversationId: string | null,
       messages: Message[],
       settings: UserSettings,
-      aiTitleGenerated?: boolean,
     ) => {
       if (!conversationId) return;
+
+      const existing = conversationsRef.current.find((c) => c.id === conversationId);
       if (
         !shouldGenerateAiTitle(
           messages,
-          aiTitleGenerated,
+          existing?.aiTitleGenerated,
           settings.titleGeneration.enabled,
         )
       ) {

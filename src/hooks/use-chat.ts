@@ -105,6 +105,14 @@ export function useChat(options: UseChatOptions = {}) {
     }, 500);
   }, []);
 
+  const flushPersist = useCallback((next: Message[]) => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    onMessagesChangeRef.current?.(next);
+  }, []);
+
   const setAll = useCallback((next: Message[]) => {
     setMessages(next);
     setStatus("idle");
@@ -130,11 +138,13 @@ export function useChat(options: UseChatOptions = {}) {
     };
     const assistantId = makeId();
     const baseMessages = [...messagesRef.current, userMessage];
-
-    setMessages([
+    const streamingMessages: Message[] = [
       ...baseMessages,
       { id: assistantId, role: "assistant", content: "", createdAt: Date.now() },
-    ]);
+    ];
+
+    setMessages(streamingMessages);
+    flushPersist(streamingMessages);
     setStatus("streaming");
     setError(null);
 
@@ -300,8 +310,9 @@ export function useChat(options: UseChatOptions = {}) {
       createdAt: Date.now(),
     };
     const finalMessages = [...baseMessages, finalAssistant];
+    flushPersist(finalMessages);
     onFinishRef.current?.(finalAssistant, finalMessages);
-  }, [schedulePersist]);
+  }, [schedulePersist, flushPersist]);
 
   return {
     messages,

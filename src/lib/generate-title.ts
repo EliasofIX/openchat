@@ -1,5 +1,10 @@
 import type { Message, UserSettings } from "@/lib/types";
-import { getOllamaBaseUrl, getOpenRouterApiKey, getTitleModel } from "@/lib/providers";
+import {
+  getActiveModel,
+  getOllamaBaseUrl,
+  getOpenRouterApiKey,
+  resolveTitleModel,
+} from "@/lib/providers";
 
 export function deriveFallbackTitle(messages: Message[]): string {
   const first = messages.find((m) => m.role === "user");
@@ -78,6 +83,7 @@ export async function generateChatTitle(
 
   const titleProvider = settings.titleGeneration.provider;
   const titleModel = resolveTitleModel(settings);
+  const chatModel = getActiveModel(settings);
 
   const payload = {
     messages: formatted,
@@ -86,10 +92,7 @@ export async function generateChatTitle(
     apiKey: getOpenRouterApiKey(settings) || undefined,
     ollamaBaseUrl: getOllamaBaseUrl(settings),
     fallbackProvider: settings.provider,
-    fallbackModel:
-      settings.provider === "ollama"
-        ? settings.ollamaModel.trim()
-        : settings.model.trim(),
+    fallbackModel: chatModel,
   };
 
   const res = await fetch("/api/generate-title", {
@@ -105,13 +108,4 @@ export async function generateChatTitle(
 
   const data = (await res.json()) as { title: string };
   return sanitizeTitle(data.title);
-}
-
-function resolveTitleModel(settings: UserSettings): string {
-  const configured = getTitleModel(settings);
-  if (configured) return configured;
-  if (settings.titleGeneration.provider === "ollama") {
-    return settings.ollamaModel.trim();
-  }
-  return configured;
 }
