@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { createAiClient } from "@/lib/ai-client";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
 import type { ModelProvider } from "@/lib/types";
 
@@ -25,10 +25,10 @@ export type CompletionOptions = {
 };
 
 function createOpenRouterClient(apiKey: string) {
-  return new OpenAI({
+  return createAiClient({
     apiKey,
     baseURL: "https://openrouter.ai/api/v1",
-    defaultHeaders: {
+    headers: {
       "HTTP-Referer": SITE_URL,
       "X-Title": SITE_NAME,
     },
@@ -36,7 +36,7 @@ function createOpenRouterClient(apiKey: string) {
 }
 
 function createOllamaClient(baseUrl: string) {
-  return new OpenAI({
+  return createAiClient({
     apiKey: "ollama",
     baseURL: `${normalizeOllamaBaseUrl(baseUrl)}/v1`,
   });
@@ -55,10 +55,9 @@ export async function completeChat(options: CompletionOptions): Promise<string> 
     }
 
     const client = createOllamaClient(baseUrl);
-    const response = await client.chat.completions.create({
+    const response = await client.complete({
       model: resolvedModel,
       messages,
-      stream: false,
     });
     return response.choices[0]?.message?.content?.trim() ?? "";
   }
@@ -72,10 +71,9 @@ export async function completeChat(options: CompletionOptions): Promise<string> 
 
   const fallbackModel = useTitleDefault ? DEFAULT_TITLE_MODEL : DEFAULT_MODEL;
   const client = createOpenRouterClient(resolvedKey);
-  const response = await client.chat.completions.create({
+  const response = await client.complete({
     model: options.model?.trim() || fallbackModel,
     messages,
-    stream: false,
   });
   return response.choices[0]?.message?.content?.trim() ?? "";
 }
