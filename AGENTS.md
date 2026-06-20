@@ -40,11 +40,11 @@ If a feature can be implemented in ~50–150 lines with `fetch`, `ReadableStream
 | Area | Packages | Notes |
 | --- | --- | --- |
 | Framework | `next`, `react`, `react-dom` | App Router, React 19 |
-| Styling | `tailwindcss`, `clsx`, `tailwind-merge`, `class-variance-authority` | Use `cn()` from `src/lib/utils.ts` |
-| UI primitives | `@base-ui/react`, `@radix-ui/react-dialog`, `lucide-react` | shadcn-style components in `src/components/ui/` |
-| Provider HTTP | `openai` | Thin client for OpenRouter + Ollama OpenAI-compatible APIs — not “the AI SDK” |
+| Styling | `tailwindcss` | Design tokens in `src/app/tokens.css`; `cn()` in `src/lib/utils.ts` |
+| UI primitives | Native HTML + Tailwind in `src/components/ui/` | Icons in `src/components/icons.tsx` |
+| Provider HTTP | `fetch` via `src/lib/ai-client.ts` | OpenRouter + Ollama OpenAI-compatible APIs — not “the AI SDK” |
 | Markdown / math | `react-markdown`, `remark-*`, `rehype-*`, `katex` | Rendering only |
-| PDF attachments | `pdfjs-dist` | Client-side text extraction |
+| PDF attachments | `pdfjs-dist` | Client-side text extraction; worker self-hosted at `public/pdf.worker.min.mjs` |
 
 Before adding **any** new dependency, ask: can we do this in a small module under `src/lib/`? If yes, do that.
 
@@ -65,7 +65,7 @@ src/
 ```
 Browser (use-chat)
   → POST /api/chat with message history
-  → route handler calls OpenRouter or Ollama via openai package
+  → route handler calls OpenRouter or Ollama via fetch (`src/lib/ai-client.ts`)
   → streams raw UTF-8 or NDJSON lines back
   → client reads response.body with getReader() + TextDecoder
 ```
@@ -125,7 +125,7 @@ Core modules use a short banner comment describing responsibilities and constrai
 - Tailwind v4 + design tokens in `src/app/globals.css`
 - `cn()` for conditional classes
 - New shadcn components: follow `components.json` (`base-nova` style, `@/` aliases)
-- Icons: `lucide-react`
+- Icons: inline SVGs in `src/components/icons.tsx`
 
 ### IDs
 

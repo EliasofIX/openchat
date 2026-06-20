@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Brain, Menu, SquarePen } from "lucide-react";
+import { Brain, Menu, SquarePen } from "@/components/icons";
 import { ChatInput } from "./chat-input";
 import { MessageItem } from "./message";
 import { SettingsDialog, type SettingsTab } from "./settings-dialog";

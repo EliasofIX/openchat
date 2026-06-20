@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ExternalLink, HardDrive, Loader2, RefreshCw, Sparkles, Type } from "lucide-react";
+import { Check, ExternalLink, HardDrive, Loader2, RefreshCw, Sparkles, Type } from "@/components/icons";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -14,7 +14,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/components/icons";
 import { isMathCodeClassName, isMathCodeLanguage, MathBlock } from "@/components/math-block";
 import { preprocessMathMarkdown } from "@/lib/preprocess-math";
 import { cn } from "@/lib/utils";

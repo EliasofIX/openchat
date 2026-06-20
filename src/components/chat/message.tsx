@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
-import { FileCode2, FileText } from "lucide-react";
+import { Check, Copy, FileCode2, FileText } from "@/components/icons";
 import { Markdown } from "@/components/markdown";
 import { ReasoningPanel } from "./reasoning-panel";
 import { cn } from "@/lib/utils";

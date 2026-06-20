@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, Copy } from "lucide-react";
+import { Check, ChevronDown, Copy } from "@/components/icons";
 import { Markdown } from "@/components/markdown";
 import { formatDuration } from "@/lib/reasoning";
 import { cn } from "@/lib/utils";

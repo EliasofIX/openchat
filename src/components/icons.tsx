@@ -1,8 +1,8 @@
-import type { SVGProps } from "react";
+import type { ReactNode, SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 
-function Icon({ size = 24, className, children, ...props }: IconProps & { children: React.ReactNode }) {
+function Icon({ size = 24, className, children, ...props }: IconProps & { children: ReactNode }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -240,6 +240,15 @@ export function Trash2({ size, className }: IconProps) {
       <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
       <line x1="10" x2="10" y1="11" y2="17" />
       <line x1="14" x2="14" y1="11" y2="17" />
+    </Icon>
+  );
+}
+
+export function User({ size, className }: IconProps) {
+  return (
+    <Icon size={size} className={className}>
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
     </Icon>
   );
 }
