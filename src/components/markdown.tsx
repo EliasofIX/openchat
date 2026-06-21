@@ -9,6 +9,8 @@
 // We memoize on `content` so re-rendering during streaming is cheap even when
 // the parent re-renders for unrelated reasons.
 
+import "katex/dist/katex.min.css";
+
 import { memo, useMemo, useState, type ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,6 +20,9 @@ import { Check, Copy } from "lucide-react";
 import { isMathCodeClassName, isMathCodeLanguage, MathBlock } from "@/components/math-block";
 import { preprocessMathMarkdown } from "@/lib/preprocess-math";
 import { cn } from "@/lib/utils";
+
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeKatex];
 
 function CodeBlock({ className, children }: { className?: string; children: string }) {
   const [copied, setCopied] = useState(false);
@@ -56,6 +61,38 @@ function CodeBlock({ className, children }: { className?: string; children: stri
 
 type CodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
 
+const MARKDOWN_COMPONENTS = {
+  code(props: CodeProps) {
+    const { inline, className, children, ...rest } = props;
+    const text = String(children ?? "").replace(/\n$/, "");
+
+    if (isMathCodeClassName(className)) {
+      const display =
+        !inline &&
+        (className?.includes("math-display") ||
+          isMathCodeLanguage(className) ||
+          text.includes("\n") ||
+          /\\begin\{/.test(text));
+      return <MathBlock content={text} display={display} />;
+    }
+
+    if (inline) {
+      return (
+        <code
+          className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em]"
+          {...rest}
+        >
+          {children}
+        </code>
+      );
+    }
+    return <CodeBlock className={className}>{text}</CodeBlock>;
+  },
+  pre({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>;
+  },
+};
+
 function MarkdownInner({ content }: { content: string }) {
   const processedContent = useMemo(() => preprocessMathMarkdown(content), [content]);
 
@@ -81,40 +118,9 @@ function MarkdownInner({ content }: { content: string }) {
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
-          code(props) {
-            const { inline, className, children, ...rest } = props as CodeProps;
-            const text = String(children ?? "").replace(/\n$/, "");
-
-            if (isMathCodeClassName(className)) {
-              const display =
-                !inline &&
-                (className?.includes("math-display") ||
-                  isMathCodeLanguage(className) ||
-                  text.includes("\n") ||
-                  /\\begin\{/.test(text));
-              return <MathBlock content={text} display={display} />;
-            }
-
-            if (inline) {
-              return (
-                <code
-                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em]"
-                  {...rest}
-                >
-                  {children}
-                </code>
-              );
-            }
-            return <CodeBlock className={className}>{text}</CodeBlock>;
-          },
-          pre({ children }) {
-            // CodeBlock already provides its own <pre>, so unwrap here.
-            return <>{children}</>;
-          },
-        }}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={MARKDOWN_COMPONENTS}
       >
         {processedContent}
       </ReactMarkdown>

@@ -1,14 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy } from "lucide-react";
-import { FileCode2, FileText } from "lucide-react";
-import { Markdown } from "@/components/markdown";
+import { memo, useState } from "react";
+import { Check, Copy, FileCode2, FileText } from "lucide-react";
+import { Markdown } from "@/components/markdown-lazy";
+import { useAttachmentBlob } from "@/hooks/use-attachment-blob";
 import { ReasoningPanel } from "./reasoning-panel";
 import { cn } from "@/lib/utils";
 import type { Message, MessageAttachment } from "@/lib/types";
 
-export function MessageItem({
+function messagePropsEqual(
+  prev: {
+    message: Message;
+    isStreaming?: boolean;
+    collapseReasoningByDefault?: boolean;
+  },
+  next: {
+    message: Message;
+    isStreaming?: boolean;
+    collapseReasoningByDefault?: boolean;
+  },
+) {
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.content === next.message.content &&
+    prev.message.reasoning === next.message.reasoning &&
+    prev.message.reasoningDurationMs === next.message.reasoningDurationMs &&
+    prev.message.attachments?.length === next.message.attachments?.length &&
+    prev.isStreaming === next.isStreaming &&
+    prev.collapseReasoningByDefault === next.collapseReasoningByDefault
+  );
+}
+
+function MessageItemInner({
   message,
   isStreaming = false,
   collapseReasoningByDefault = true,
@@ -48,6 +71,8 @@ export function MessageItem({
   );
 }
 
+export const MessageItem = memo(MessageItemInner, messagePropsEqual);
+
 function AssistantMessage({
   message,
   isStreaming,
@@ -83,11 +108,19 @@ function AssistantMessage({
         />
       )}
 
-      {hasContent && <Markdown content={message.content} />}
+      {hasContent &&
+        (isStreaming ? (
+          <div className="whitespace-pre-wrap break-words text-[0.95rem] leading-7 text-foreground">
+            {message.content}
+            <StreamingCursor />
+          </div>
+        ) : (
+          <Markdown content={message.content} />
+        ))}
 
       {!hasContent && !hasReasoning && isStreaming && <StreamingCursor />}
 
-      {hasContent && (
+      {hasContent && !isStreaming && (
         <div className="mt-1.5 -ml-1 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
@@ -116,24 +149,33 @@ export function StreamingCursor() {
   );
 }
 
-function UserAttachment({ attachment: att }: { attachment: MessageAttachment }) {
-  if (att.kind === "image" && att.dataUrl) {
-    return (
-      <div className="overflow-hidden rounded-xl border border-primary-foreground/20">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={att.dataUrl}
-          alt={att.name}
-          className="max-h-48 max-w-full object-contain"
-        />
-      </div>
-    );
+function UserAttachment({ attachment }: { attachment: MessageAttachment }) {
+  const { dataUrl, loading } = useAttachmentBlob(attachment);
+
+  if (attachment.kind === "image") {
+    if (loading) {
+      return (
+        <div className="h-24 w-32 animate-pulse rounded-xl border border-primary-foreground/20 bg-primary/40" />
+      );
+    }
+    if (dataUrl) {
+      return (
+        <div className="overflow-hidden rounded-xl border border-primary-foreground/20">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={dataUrl}
+            alt={attachment.name}
+            className="max-h-48 max-w-full object-contain"
+          />
+        </div>
+      );
+    }
   }
 
   return (
     <div className="flex items-center gap-2 rounded-xl border border-primary-foreground/20 bg-primary/80 px-3 py-2 text-primary-foreground">
-      {att.kind === "pdf" ? <FileText size={14} /> : <FileCode2 size={14} />}
-      <span className="max-w-[12rem] truncate text-xs">{att.name}</span>
+      {attachment.kind === "pdf" ? <FileText size={14} /> : <FileCode2 size={14} />}
+      <span className="max-w-[12rem] truncate text-xs">{attachment.name}</span>
     </div>
   );
 }

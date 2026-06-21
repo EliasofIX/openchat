@@ -83,8 +83,11 @@ To swap providers, edit the route (or `ai-completion.ts`), keep the same `Readab
 
 ### Persistence
 
-- `src/lib/storage.ts` — tiny `localStorage` wrapper
-- `src/hooks/use-conversations.ts` / `use-settings.ts` — hydration + save effects
+- `src/lib/storage.ts` — per-conversation `localStorage` keys + index; settings/active id
+- `src/lib/attachment-store.ts` — IndexedDB for attachment `dataUrl` / `textContent` blobs
+- `src/lib/hydrate-messages.ts` — resolve attachment refs from IDB for render and API calls
+- `src/hooks/use-conversations.ts` / `use-settings.ts` — hydration + debounced save effects
+- Legacy `openchat:conversations` monolithic key is migrated once on first load
 - Swap `storage.ts` for a database when adding server-side persistence — do not introduce an ORM in the same change unless asked
 
 ### Types
@@ -112,7 +115,9 @@ Core modules use a short banner comment describing responsibilities and constrai
 - `"use client"` only where needed (hooks, browser APIs, event handlers)
 - Prefer custom hooks in `src/hooks/` over bloated components
 - Use `useRef` for values read inside async/stream callbacks to avoid stale closures
-- Memoize expensive render paths (see `src/components/markdown.tsx`)
+- Memoize expensive render paths (see `src/components/markdown.tsx`, `message.tsx`)
+- Heavy client chunks (markdown stack, settings dialog) must use `next/dynamic` with `ssr: false`
+- Stream token updates in `use-chat.ts` are RAF-batched; persist conversations only on flush (send start / stream end), not per token
 
 ### TypeScript
 
@@ -228,6 +233,7 @@ Example (too much):
 | Add / change provider | `src/app/api/chat/route.ts`, `src/lib/ai-completion.ts` |
 | Conversation list / titles | `src/hooks/use-conversations.ts`, `src/lib/generate-title.ts` |
 | User settings | `src/hooks/use-settings.ts`, `src/lib/storage.ts` |
+| Attachment blobs (IDB) | `src/lib/attachment-store.ts`, `src/hooks/use-attachment-blob.ts` |
 | Assistant message rendering | `src/components/markdown.tsx`, `src/components/chat/message.tsx` |
 | Attachments | `src/lib/attachments.ts`, `src/hooks/use-attachments.ts` |
 | Reasoning display | `src/lib/reasoning.ts`, `src/components/chat/reasoning-panel.tsx` |

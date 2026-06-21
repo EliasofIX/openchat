@@ -1,12 +1,50 @@
-// Browser-only persistence helpers. We use localStorage so the app works
-// out of the box without any backend. Swap these out for a database call
-// (Postgres, SQLite, KV, …) when you wire up multi-user persistence.
+// Browser-only persistence helpers. Conversation metadata lives in localStorage
+// (per-conversation keys); large attachment blobs live in IndexedDB via
+// attachment-store.ts.
 
-import type { Conversation, UserSettings } from "./types";
+import {
+  collectAttachmentIds,
+  deleteBlobs,
+  putBlobsFromMessages,
+} from "@/lib/attachment-store";
+import type { Conversation, Message, MessageAttachment, UserSettings } from "./types";
 
-const KEY_CONVERSATIONS = "openchat:conversations";
+const KEY_LEGACY_CONVERSATIONS = "openchat:conversations";
+const KEY_CONV_INDEX = "openchat:conv-index";
+const KEY_CONV_PREFIX = "openchat:conv:";
 const KEY_SETTINGS = "openchat:settings";
 const KEY_ACTIVE = "openchat:active-conversation";
+
+export type StorageError = "quota_exceeded";
+
+type ConvIndexEntry = {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  aiTitleGenerated?: boolean;
+};
+
+let storageError: StorageError | null = null;
+const errorListeners = new Set<(error: StorageError | null) => void>();
+
+function setStorageError(error: StorageError | null) {
+  storageError = error;
+  for (const listener of errorListeners) listener(error);
+}
+
+export function getStorageError(): StorageError | null {
+  return storageError;
+}
+
+export function clearStorageError() {
+  setStorageError(null);
+}
+
+export function onStorageError(listener: (error: StorageError | null) => void): () => void {
+  errorListeners.add(listener);
+  return () => errorListeners.delete(listener);
+}
 
 export const DEFAULT_SETTINGS: UserSettings = {
   name: "",
@@ -30,6 +68,10 @@ export const DEFAULT_SETTINGS: UserSettings = {
 };
 
 const LEGACY_DEFAULT_TITLE_MODEL = "google/gemini-2.0-flash-001";
+
+function convKey(id: string) {
+  return `${KEY_CONV_PREFIX}${id}`;
+}
 
 function resolveStoredTitleModel(
   titleStored: Partial<UserSettings["titleGeneration"]> | undefined,
@@ -81,15 +123,131 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function safeSetItem(key: string, value: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    localStorage.setItem(key, value);
+    setStorageError(null);
+    return true;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      setStorageError("quota_exceeded");
+    }
+    return false;
+  }
+}
+
+function stripAttachment(att: MessageAttachment): MessageAttachment {
+  const { id, kind, name, mimeType } = att;
+  return { id, kind, name, mimeType };
+}
+
+export function stripMessageForStorage(message: Message): Message {
+  if (!message.attachments?.length) return message;
+  return { ...message, attachments: message.attachments.map(stripAttachment) };
+}
+
+function stripConversation(conv: Conversation): Conversation {
+  return { ...conv, messages: conv.messages.map(stripMessageForStorage) };
+}
+
+function loadIndex(): ConvIndexEntry[] {
+  if (typeof window === "undefined") return [];
+  return safeParse<ConvIndexEntry[]>(localStorage.getItem(KEY_CONV_INDEX), []);
+}
+
+function saveIndex(index: ConvIndexEntry[]) {
+  safeSetItem(KEY_CONV_INDEX, JSON.stringify(index));
+}
+
+function loadConversationById(id: string): Conversation | null {
+  if (typeof window === "undefined") return null;
+  return safeParse<Conversation | null>(localStorage.getItem(convKey(id)), null);
+}
+
+async function migrateLegacyConversations(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const legacy = localStorage.getItem(KEY_LEGACY_CONVERSATIONS);
+  if (!legacy) return;
+
+  const conversations = safeParse<Conversation[]>(legacy, []);
+  await putBlobsFromMessages(conversations.flatMap((c) => c.messages));
+
+  const index: ConvIndexEntry[] = [];
+  for (const conv of conversations) {
+    safeSetItem(convKey(conv.id), JSON.stringify(stripConversation(conv)));
+    index.push({
+      id: conv.id,
+      title: conv.title,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+      aiTitleGenerated: conv.aiTitleGenerated,
+    });
+  }
+
+  saveIndex(index.sort((a, b) => b.updatedAt - a.updatedAt));
+  localStorage.removeItem(KEY_LEGACY_CONVERSATIONS);
+}
+
+function pruneOldestConversation(): boolean {
+  const index = loadIndex();
+  if (index.length === 0) return false;
+
+  const oldest = index.reduce((a, b) => (a.updatedAt < b.updatedAt ? a : b));
+  void storage.deleteConversation(oldest.id);
+  return true;
+}
+
 export const storage = {
+  async migrateIfNeeded(): Promise<void> {
+    await migrateLegacyConversations();
+  },
+
   loadConversations(): Conversation[] {
     if (typeof window === "undefined") return [];
-    return safeParse<Conversation[]>(localStorage.getItem(KEY_CONVERSATIONS), []);
+    const index = loadIndex();
+    const conversations = index
+      .map((entry) => loadConversationById(entry.id))
+      .filter((c): c is Conversation => c !== null);
+    return conversations.sort((a, b) => b.updatedAt - a.updatedAt);
   },
-  saveConversations(value: Conversation[]) {
+
+  async saveConversation(conv: Conversation): Promise<boolean> {
+    if (typeof window === "undefined") return false;
+
+    await putBlobsFromMessages(conv.messages);
+    const stripped = stripConversation(conv);
+
+    let ok = safeSetItem(convKey(conv.id), JSON.stringify(stripped));
+    if (!ok && pruneOldestConversation()) {
+      ok = safeSetItem(convKey(conv.id), JSON.stringify(stripped));
+    }
+    if (!ok) return false;
+
+    const index = loadIndex().filter((e) => e.id !== conv.id);
+    index.unshift({
+      id: conv.id,
+      title: conv.title,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+      aiTitleGenerated: conv.aiTitleGenerated,
+    });
+    saveIndex(index);
+    return true;
+  },
+
+  async deleteConversation(id: string): Promise<void> {
     if (typeof window === "undefined") return;
-    localStorage.setItem(KEY_CONVERSATIONS, JSON.stringify(value));
+
+    const conv = loadConversationById(id);
+    if (conv) {
+      await deleteBlobs(collectAttachmentIds(conv.messages));
+    }
+
+    localStorage.removeItem(convKey(id));
+    saveIndex(loadIndex().filter((e) => e.id !== id));
   },
+
   loadSettings(): UserSettings {
     if (typeof window === "undefined") return DEFAULT_SETTINGS;
     const stored = safeParse<Partial<UserSettings>>(
@@ -98,17 +256,20 @@ export const storage = {
     );
     return normalizeSettings(stored);
   },
+
   saveSettings(value: UserSettings) {
     if (typeof window === "undefined") return;
-    localStorage.setItem(KEY_SETTINGS, JSON.stringify(value));
+    safeSetItem(KEY_SETTINGS, JSON.stringify(value));
   },
+
   loadActiveId(): string | null {
     if (typeof window === "undefined") return null;
     return localStorage.getItem(KEY_ACTIVE);
   },
+
   saveActiveId(id: string | null) {
     if (typeof window === "undefined") return;
-    if (id) localStorage.setItem(KEY_ACTIVE, id);
+    if (id) safeSetItem(KEY_ACTIVE, id);
     else localStorage.removeItem(KEY_ACTIVE);
   },
 };

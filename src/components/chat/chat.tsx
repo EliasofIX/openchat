@@ -1,19 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Brain, Menu, SquarePen } from "lucide-react";
 import { ChatInput } from "./chat-input";
 import { MessageItem } from "./message";
-import { SettingsDialog, type SettingsTab } from "./settings-dialog";
+import type { SettingsTab } from "./settings-dialog";
 import { Sidebar } from "./sidebar";
 import { useChat } from "@/hooks/use-chat";
 import { useAttachments } from "@/hooks/use-attachments";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
+import {
+  LOAD_MORE_MESSAGE_STEP,
+  SCROLL_NEAR_BOTTOM_THRESHOLD,
+  VISIBLE_MESSAGE_LIMIT,
+} from "@/lib/constants";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
+import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
 import { cn } from "@/lib/utils";
+
+const SettingsDialog = dynamic(
+  () => import("./settings-dialog").then((m) => m.SettingsDialog),
+  { ssr: false },
+);
 
 export function Chat() {
   const conv = useConversations();
@@ -68,31 +80,48 @@ export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [visibleCount, setVisibleCount] = useState(VISIBLE_MESSAGE_LIMIT);
+  const [storageError, setStorageError] = useState(getStorageError());
+
+  const mainRef = useRef<HTMLElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const lastLoadedId = useRef<string | null>(null);
+  const setMessages = chat.setMessages;
+
+  useEffect(() => onStorageError(setStorageError), []);
 
   const openSettings = (tab: SettingsTab = "general") => {
     setSettingsTab(tab);
     setSettingsOpen(true);
   };
 
-  // Load messages from the active conversation when it changes (e.g. user
-  // selects a different chat from the sidebar). We compare ids via a ref so
-  // we don't fight in-flight streaming updates.
-  const lastLoadedId = useRef<string | null>(null);
   useEffect(() => {
     if (!conv.hydrated) return;
-    const id = conv.active?.id ?? null;
+    const id = conv.activeId ?? null;
     if (id !== lastLoadedId.current) {
       lastLoadedId.current = id;
-      chat.setMessages(conv.active?.messages ?? []);
+      const active = conv.conversations.find((c) => c.id === id);
+      setMessages(active?.messages ?? []);
+      setVisibleCount(VISIBLE_MESSAGE_LIMIT);
     }
-  }, [conv.hydrated, conv.active, chat]);
+  }, [conv.hydrated, conv.activeId, conv.conversations, setMessages]);
 
-  // Auto-scroll to bottom as messages arrive. `scrollIntoView` with `block:
-  // "end"` is enough — the browser handles the smoothness.
-  const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  const isNearBottom = useCallback(() => {
+    const el = mainRef.current;
+    if (!el) return true;
+    return (
+      el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_NEAR_BOTTOM_THRESHOLD
+    );
+  }, []);
+
+  const hiddenCount = Math.max(0, chat.messages.length - visibleCount);
+  const visibleMessages =
+    hiddenCount > 0 ? chat.messages.slice(-visibleCount) : chat.messages;
+
+  useLayoutEffect(() => {
+    if (!chat.isStreaming && !isNearBottom()) return;
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [chat.messages]);
+  }, [chat.messages, chat.isStreaming, isNearBottom]);
 
   const onSubmit = () => {
     const text = input;
@@ -119,6 +148,7 @@ export function Chat() {
     setInput("");
     attachmentsHook.clear();
     setSidebarOpen(false);
+    setVisibleCount(VISIBLE_MESSAGE_LIMIT);
   };
 
   return (
@@ -140,13 +170,33 @@ export function Chat() {
         }}
       />
 
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        settings={settingsHook.settings}
-        onSave={settingsHook.update}
-        initialTab={settingsTab}
-      />
+      {settingsOpen && (
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          settings={settingsHook.settings}
+          onSave={settingsHook.update}
+          initialTab={settingsTab}
+        />
+      )}
+
+      {storageError === "quota_exceeded" && (
+        <div className="absolute inset-x-0 top-12 z-30 mx-auto max-w-3xl px-4">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <span>Storage is full. Oldest conversations may have been removed.</span>
+            <button
+              type="button"
+              onClick={() => {
+                clearStorageError();
+                setStorageError(null);
+              }}
+              className="shrink-0 rounded px-2 py-0.5 text-xs hover:bg-destructive/10"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <header className="absolute left-0 top-0 z-10 flex items-center gap-1 p-2">
         <IconButton onClick={() => setSidebarOpen(true)} label="Open conversations">
@@ -157,27 +207,43 @@ export function Chat() {
         </IconButton>
       </header>
 
-      <main className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 overflow-y-auto">
         {chat.messages.length === 0 ? (
           <EmptyState name={settingsHook.settings.name} />
         ) : (
           <div className="mx-auto w-full max-w-3xl px-4 pt-16 pb-40">
             <div className="space-y-6">
-              {chat.messages.map((m, i) => (
-                <div key={m.id}>
-                  <MessageItem
-                    message={m}
-                    isStreaming={
-                      chat.isStreaming &&
-                      m.role === "assistant" &&
-                      i === chat.messages.length - 1
+              {hiddenCount > 0 && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleCount((n) => n + LOAD_MORE_MESSAGE_STEP)
                     }
-                    collapseReasoningByDefault={
-                      settingsHook.settings.reasoning.collapseByDefault
-                    }
-                  />
+                    className="rounded-full border border-border bg-muted/40 px-4 py-1.5 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  >
+                    Load earlier messages ({hiddenCount} hidden)
+                  </button>
                 </div>
-              ))}
+              )}
+              {visibleMessages.map((m, i) => {
+                const globalIndex = hiddenCount > 0 ? hiddenCount + i : i;
+                return (
+                  <div key={m.id} className="message-row">
+                    <MessageItem
+                      message={m}
+                      isStreaming={
+                        chat.isStreaming &&
+                        m.role === "assistant" &&
+                        globalIndex === chat.messages.length - 1
+                      }
+                      collapseReasoningByDefault={
+                        settingsHook.settings.reasoning.collapseByDefault
+                      }
+                    />
+                  </div>
+                );
+              })}
               {chat.error && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {chat.error}

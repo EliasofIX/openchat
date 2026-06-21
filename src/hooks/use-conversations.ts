@@ -9,6 +9,8 @@ function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const SAVE_DEBOUNCE_MS = 500;
+
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -17,6 +19,8 @@ export function useConversations() {
   const activeIdRef = useRef<string | null>(null);
   const conversationsRef = useRef<Conversation[]>([]);
   const titleGenerationInFlight = useRef<Set<string>>(new Set());
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingConvRef = useRef<Conversation | null>(null);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -26,21 +30,52 @@ export function useConversations() {
     conversationsRef.current = conversations;
   }, [conversations]);
 
-  useEffect(() => {
-    setConversations(storage.loadConversations());
-    const storedActiveId = storage.loadActiveId();
-    setActiveId(storedActiveId);
-    activeIdRef.current = storedActiveId;
-    setHydrated(true);
+  const flushSave = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const conv = pendingConvRef.current;
+    if (!conv) return;
+    pendingConvRef.current = null;
+    void storage.saveConversation(conv);
   }, []);
 
+  const queueSave = useCallback(
+    (conv: Conversation) => {
+      pendingConvRef.current = conv;
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null;
+        const next = pendingConvRef.current;
+        pendingConvRef.current = null;
+        if (next) void storage.saveConversation(next);
+      }, SAVE_DEBOUNCE_MS);
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (hydrated) storage.saveConversations(conversations);
-  }, [conversations, hydrated]);
+    void storage.migrateIfNeeded().then(() => {
+      setConversations(storage.loadConversations());
+      const storedActiveId = storage.loadActiveId();
+      setActiveId(storedActiveId);
+      activeIdRef.current = storedActiveId;
+      setHydrated(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (hydrated) storage.saveActiveId(activeId);
   }, [activeId, hydrated]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const conv = pendingConvRef.current;
+      if (conv) void storage.saveConversation(conv);
+    };
+  }, []);
 
   const active = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
@@ -72,6 +107,8 @@ export function useConversations() {
         aiTitleGenerated: existing?.aiTitleGenerated ?? false,
       };
 
+      let savedConv: Conversation | null = null;
+
       setConversations((prev) => {
         const next = isNew
           ? [
@@ -100,25 +137,38 @@ export function useConversations() {
             );
 
         conversationsRef.current = next;
+        savedConv = next.find((c) => c.id === id) ?? null;
         return next;
       });
 
+      if (savedConv) queueSave(savedConv);
       return result;
     },
-    [],
+    [queueSave],
   );
 
-  const setAiTitle = useCallback((id: string, title: string) => {
-    setConversations((prev) => {
-      const next = prev.map((c) =>
-        c.id === id
-          ? { ...c, title: title.trim() || c.title, aiTitleGenerated: true, updatedAt: Date.now() }
-          : c,
-      );
-      conversationsRef.current = next;
-      return next;
-    });
-  }, []);
+  const setAiTitle = useCallback(
+    (id: string, title: string) => {
+      let savedConv: Conversation | null = null;
+
+      setConversations((prev) => {
+        const next = prev.map((c) =>
+          c.id === id
+            ? { ...c, title: title.trim() || c.title, aiTitleGenerated: true, updatedAt: Date.now() }
+            : c,
+        );
+        conversationsRef.current = next;
+        savedConv = next.find((c) => c.id === id) ?? null;
+        return next;
+      });
+
+      if (savedConv) {
+        flushSave();
+        void storage.saveConversation(savedConv);
+      }
+    },
+    [flushSave],
+  );
 
   const maybeGenerateTitle = useCallback(
     async (
@@ -153,19 +203,34 @@ export function useConversations() {
     [setAiTitle],
   );
 
-  const remove = useCallback((id: string) => {
-    setConversations((prev) => prev.filter((c) => c.id !== id));
-    if (activeIdRef.current === id) {
-      activeIdRef.current = null;
-      setActiveId(null);
-    }
-  }, []);
+  const remove = useCallback(
+    (id: string) => {
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      void storage.deleteConversation(id);
+      if (activeIdRef.current === id) {
+        activeIdRef.current = null;
+        setActiveId(null);
+      }
+    },
+    [],
+  );
 
-  const rename = useCallback((id: string, title: string) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, title: title.trim() || c.title } : c)),
-    );
-  }, []);
+  const rename = useCallback(
+    (id: string, title: string) => {
+      let savedConv: Conversation | null = null;
+
+      setConversations((prev) => {
+        const next = prev.map((c) =>
+          c.id === id ? { ...c, title: title.trim() || c.title, updatedAt: Date.now() } : c,
+        );
+        savedConv = next.find((c) => c.id === id) ?? null;
+        return next;
+      });
+
+      if (savedConv) void storage.saveConversation(savedConv);
+    },
+    [],
+  );
 
   return {
     conversations,

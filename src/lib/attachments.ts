@@ -1,4 +1,6 @@
 import type { AttachmentKind, MessageAttachment } from "./types";
+import { putBlob } from "./attachment-store";
+import { MAX_PDF_TEXT_BYTES } from "./constants";
 
 const CODE_EXTENSIONS = new Set([
   "js", "jsx", "ts", "tsx", "mjs", "cjs",
@@ -87,6 +89,11 @@ export async function compressImage(
   return { dataUrl, mimeType: "image/jpeg" };
 }
 
+function capText(text: string, maxBytes: number): string {
+  if (text.length <= maxBytes) return text;
+  return `${text.slice(0, maxBytes)}\n\n[Truncated — text exceeded storage limit]`;
+}
+
 export async function extractPdfText(file: File): Promise<string> {
   if (file.size > MAX_PDF_BYTES) {
     throw new Error("PDF is too large (max 10 MB).");
@@ -114,7 +121,7 @@ export async function extractPdfText(file: File): Promise<string> {
   if (!combined) {
     throw new Error("No text found in PDF. Scanned PDFs may not be supported.");
   }
-  return combined;
+  return capText(combined, MAX_PDF_TEXT_BYTES);
 }
 
 export async function fileToAttachment(
@@ -136,16 +143,22 @@ export async function fileToAttachment(
   if (kind === "image") {
     onCompressing?.();
     const { dataUrl, mimeType } = await compressImage(file);
-    return { ...base, mimeType, dataUrl };
+    const attachment = { ...base, mimeType, dataUrl };
+    await putBlob(attachment.id, { dataUrl });
+    return attachment;
   }
 
   if (kind === "pdf") {
     const textContent = await extractPdfText(file);
-    return { ...base, textContent };
+    const attachment = { ...base, textContent };
+    await putBlob(attachment.id, { textContent });
+    return attachment;
   }
 
   const textContent = await readTextFile(file, MAX_CODE_BYTES);
-  return { ...base, textContent };
+  const attachment = { ...base, textContent };
+  await putBlob(attachment.id, { textContent });
+  return attachment;
 }
 
 export function filesFromClipboard(

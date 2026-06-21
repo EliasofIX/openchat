@@ -1,21 +1,19 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  useChat — the entire client-side chat engine in ~110 lines.
+//  useChat — the entire client-side chat engine.
 //
 //  Responsibilities:
 //   • Hold the current message list.
 //   • POST to /api/chat with the history (+ optional system prompt).
 //   • Read the response as a raw UTF-8 text stream and append tokens to the
-//     latest assistant message as they arrive.
+//     latest assistant message as they arrive (RAF-batched for smooth UI).
 //   • Abort the stream when the user clicks Stop.
-//
-//  No dependencies beyond React + the Fetch API. Drop into any component
-//  with `const chat = useChat({ initialMessages, systemPrompt, onFinish })`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildApiContent } from "@/lib/build-api-content";
+import { hydrateMessages } from "@/lib/hydrate-messages";
 import type { Message, MessageAttachment, ModelProvider, ReasoningSettings } from "@/lib/types";
 
 function makeId() {
@@ -85,7 +83,6 @@ export function useChat(options: UseChatOptions = {}) {
   const onFinishRef = useRef(onFinish);
   const onMessagesChangeRef = useRef(onMessagesChange);
   const abortRef = useRef<AbortController | null>(null);
-  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { systemPromptRef.current = systemPrompt; }, [systemPrompt]);
@@ -97,19 +94,7 @@ export function useChat(options: UseChatOptions = {}) {
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
   useEffect(() => { onMessagesChangeRef.current = onMessagesChange; }, [onMessagesChange]);
 
-  const schedulePersist = useCallback((next: Message[]) => {
-    if (!onMessagesChangeRef.current) return;
-    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-    persistTimerRef.current = setTimeout(() => {
-      onMessagesChangeRef.current?.(next);
-    }, 500);
-  }, []);
-
   const flushPersist = useCallback((next: Message[]) => {
-    if (persistTimerRef.current) {
-      clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = null;
-    }
     onMessagesChangeRef.current?.(next);
   }, []);
 
@@ -156,33 +141,56 @@ export function useChat(options: UseChatOptions = {}) {
     let reasoningStartedAt: number | null = null;
     let reasoningDurationMs: number | undefined;
     let aborted = false;
+    let rafId: number | null = null;
 
-    const updateAssistant = (
-      content: string,
-      reasoningText?: string,
-      duration?: number,
-    ) => {
+    const cancelRaf = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+
+    const flushAssistantUi = () => {
+      rafId = null;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!last || last.id !== assistantId) return prev;
-        const next = [
+        return [
           ...prev.slice(0, -1),
           {
             ...last,
-            content,
-            ...(reasoningText !== undefined ? { reasoning: reasoningText } : {}),
-            ...(duration !== undefined ? { reasoningDurationMs: duration } : {}),
+            content: accumulated,
+            ...(accumulatedReasoning ? { reasoning: accumulatedReasoning } : {}),
+            ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
           },
         ];
-        schedulePersist(next);
-        return next;
       });
     };
 
+    const scheduleAssistantUi = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(flushAssistantUi);
+    };
+
+    const applyPart = (part: StreamPart) => {
+      if (part.p === "reasoning") {
+        if (!reasoningStartedAt) reasoningStartedAt = Date.now();
+        accumulatedReasoning += part.t;
+      } else {
+        if (reasoningStartedAt && reasoningDurationMs === undefined) {
+          reasoningDurationMs = Date.now() - reasoningStartedAt;
+        }
+        accumulated += part.t;
+      }
+      scheduleAssistantUi();
+    };
+
     try {
+      const hydratedBase = await hydrateMessages(baseMessages);
+
       const payload: Record<string, unknown> = {
         systemPrompt: systemPromptRef.current,
-        messages: baseMessages.map(toApiMessage),
+        messages: hydratedBase.map(toApiMessage),
         provider: providerRef.current ?? "openrouter",
       };
 
@@ -214,23 +222,6 @@ export function useChat(options: UseChatOptions = {}) {
       const ndjson = isNdjsonStream(res.headers.get("Content-Type"));
       let lineBuffer = "";
 
-      const applyPart = (part: StreamPart) => {
-        if (part.p === "reasoning") {
-          if (!reasoningStartedAt) reasoningStartedAt = Date.now();
-          accumulatedReasoning += part.t;
-        } else {
-          if (reasoningStartedAt && reasoningDurationMs === undefined) {
-            reasoningDurationMs = Date.now() - reasoningStartedAt;
-          }
-          accumulated += part.t;
-        }
-        updateAssistant(
-          accumulated,
-          accumulatedReasoning,
-          reasoningDurationMs,
-        );
-      };
-
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -251,7 +242,7 @@ export function useChat(options: UseChatOptions = {}) {
           }
         } else {
           accumulated += chunk;
-          updateAssistant(accumulated);
+          scheduleAssistantUi();
         }
       }
 
@@ -260,16 +251,16 @@ export function useChat(options: UseChatOptions = {}) {
         if (part) applyPart(part);
       }
 
-      // Stream ended with reasoning but no content — still record duration.
       if (
         reasoningStartedAt &&
         reasoningDurationMs === undefined &&
         accumulatedReasoning
       ) {
         reasoningDurationMs = Date.now() - reasoningStartedAt;
-        updateAssistant(accumulated, accumulatedReasoning, reasoningDurationMs);
+        scheduleAssistantUi();
       }
     } catch (err) {
+      cancelRaf();
       if ((err as Error).name === "AbortError") {
         aborted = true;
       } else {
@@ -286,6 +277,9 @@ export function useChat(options: UseChatOptions = {}) {
         return;
       }
     }
+
+    cancelRaf();
+    flushAssistantUi();
 
     abortRef.current = null;
     setStatus("idle");
@@ -310,9 +304,10 @@ export function useChat(options: UseChatOptions = {}) {
       createdAt: Date.now(),
     };
     const finalMessages = [...baseMessages, finalAssistant];
+    setMessages(finalMessages);
     flushPersist(finalMessages);
     onFinishRef.current?.(finalAssistant, finalMessages);
-  }, [schedulePersist, flushPersist]);
+  }, [flushPersist]);
 
   return {
     messages,
