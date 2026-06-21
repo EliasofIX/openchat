@@ -5,7 +5,11 @@
 //  or NDJSON stream and doesn't care which provider produced it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import OpenAI from "openai";
+import {
+  createAiClient,
+  type ChatCompletionDelta,
+  type ChatMessage,
+} from "@/lib/ai-client";
 import {
   buildOpenRouterReasoning,
   shouldStreamReasoning,
@@ -26,14 +30,14 @@ type ContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
-type ChatMessage = {
+type ApiChatMessage = {
   role: "system" | "user" | "assistant";
   content: string | ContentPart[];
   reasoning?: string;
 };
 
 type ChatRequest = {
-  messages: ChatMessage[];
+  messages: ApiChatMessage[];
   provider?: ModelProvider;
   model?: string;
   systemPrompt?: string;
@@ -44,22 +48,11 @@ type ChatRequest = {
 
 type StreamPart = "content" | "reasoning";
 
-type ReasoningDelta = OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & {
-  reasoning?: string;
-  reasoning_content?: string;
-  thinking?: string;
-  reasoning_details?: Array<{
-    type?: string;
-    text?: string;
-    summary?: string;
-  }>;
-};
-
 function encodePart(part: StreamPart, text: string): Uint8Array {
   return new TextEncoder().encode(`${JSON.stringify({ p: part, t: text })}\n`);
 }
 
-function extractDeltaReasoning(delta: ReasoningDelta | undefined | null): string {
+function extractDeltaReasoning(delta: ChatCompletionDelta | undefined | null): string {
   if (!delta) return "";
   if (delta.thinking) return delta.thinking;
   return extractReasoningText(delta);
@@ -70,10 +63,10 @@ function resolveProvider(value?: string): ModelProvider {
 }
 
 function createOpenRouterClient(apiKey: string) {
-  return new OpenAI({
+  return createAiClient({
     apiKey,
     baseURL: "https://openrouter.ai/api/v1",
-    defaultHeaders: {
+    headers: {
       "HTTP-Referer": SITE_URL,
       "X-Title": SITE_NAME,
     },
@@ -81,7 +74,7 @@ function createOpenRouterClient(apiKey: string) {
 }
 
 function createOllamaClient(baseUrl: string) {
-  return new OpenAI({
+  return createAiClient({
     apiKey: "ollama",
     baseURL: `${normalizeOllamaBaseUrl(baseUrl)}/v1`,
   });
@@ -115,7 +108,7 @@ export async function POST(req: Request) {
     : messages;
 
   const streamReasoning = shouldStreamReasoning(reasoning);
-  let upstream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
+  let upstream: AsyncGenerator<import("@/lib/ai-client").ChatCompletionChunk>;
 
   if (provider === "ollama") {
     const baseUrl = normalizeOllamaBaseUrl(
@@ -133,12 +126,11 @@ export async function POST(req: Request) {
     const client = createOllamaClient(baseUrl);
 
     try {
-      upstream = await client.chat.completions.create({
+      upstream = client.stream({
         model: resolvedModel,
         messages: fullMessages,
-        stream: true,
         ...(reasoning?.enabled ? { think: true } : {}),
-      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming);
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown upstream error.";
       return new Response(`Ollama error: ${message}`, { status: 502 });
@@ -157,12 +149,11 @@ export async function POST(req: Request) {
     const reasoningParam = buildOpenRouterReasoning(reasoning);
 
     try {
-      upstream = await client.chat.completions.create({
+      upstream = client.stream({
         model: model?.trim() || DEFAULT_MODEL,
         messages: fullMessages,
-        stream: true,
         ...(reasoningParam ? { reasoning: reasoningParam } : {}),
-      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming);
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown upstream error.";
       return new Response(`OpenRouter error: ${message}`, { status: 502 });
@@ -173,7 +164,7 @@ export async function POST(req: Request) {
     async start(controller) {
       try {
         for await (const chunk of upstream) {
-          const delta = chunk.choices[0]?.delta as ReasoningDelta | undefined;
+          const delta = chunk.choices[0]?.delta;
           const reasoningText = extractDeltaReasoning(delta);
           const contentText = delta?.content;
 

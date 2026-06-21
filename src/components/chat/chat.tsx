@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Brain, Menu, SquarePen } from "lucide-react";
+import { Brain, Menu, SquarePen } from "@/components/icons";
 import { ChatInput } from "./chat-input";
 import { MessageItem } from "./message";
 import type { SettingsTab } from "./settings-dialog";

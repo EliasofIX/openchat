@@ -54,7 +54,7 @@ src/
   lib/
     storage.ts            ← Tiny localStorage wrapper.
     types.ts              ← Message / Conversation / UserSettings.
-    utils.ts              ← `cn()` (clsx + tailwind-merge).
+    utils.ts              ← `cn()` class-name helper.
 ```
 
 Every file is short on purpose. There are no clever abstractions to learn before

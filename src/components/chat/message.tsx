@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState } from "react";
-import { Check, Copy, FileCode2, FileText } from "lucide-react";
+import { Check, Copy, FileCode2, FileText } from "@/components/icons";
 import { Markdown } from "@/components/markdown-lazy";
 import { useAttachmentBlob } from "@/hooks/use-attachment-blob";
 import { ReasoningPanel } from "./reasoning-panel";

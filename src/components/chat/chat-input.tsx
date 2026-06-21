@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from "react";
-import { ArrowUp, Plus, Square } from "lucide-react";
+import { ArrowUp, Plus, Square } from "@/components/icons";
 import { AttachmentPreviewList } from "./attachment-preview";
 import { ACCEPTED_FILE_TYPES } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
