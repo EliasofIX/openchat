@@ -120,6 +120,29 @@ async function waitForServer(url, child, timeoutMs = 60_000) {
   throw new Error(`Timed out waiting for ${url} after ${timeoutMs}ms`);
 }
 
+// Spawn the standalone server and wait for it to answer, retrying once on a fresh
+// port. getFreePort()'s port can be taken between probe and bind — the server then
+// exits with EADDRINUSE — so a single retry lets a transient collision self-heal
+// instead of hard-failing the launch. Sets the module-level serverProcess and
+// returns the URL that came up.
+async function startStandaloneServerWithRetry() {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const port = await getFreePort();
+    const url = `http://127.0.0.1:${port}`;
+    serverProcess = startStandaloneServer(port);
+    try {
+      await waitForServer(url, serverProcess);
+      return url;
+    } catch (err) {
+      stopServer(); // Reap the failed child before retrying so it can't orphan.
+      if (attempt === 2) throw err;
+      if (process.env.ELECTRON_DEBUG) {
+        console.error(`[electron] server start failed (attempt ${attempt}); retrying on a fresh port:`, err);
+      }
+    }
+  }
+}
+
 async function createWindow() {
   // Guard against overlapping creation: `activate` (dock click) can fire while
   // the first window is still awaiting the server, which would spawn a second
@@ -127,14 +150,12 @@ async function createWindow() {
   if (mainWindow || creatingWindow) return;
   creatingWindow = true;
   try {
-    const port = isDev ? 3000 : await getFreePort();
-    const url = `http://127.0.0.1:${port}`;
-
-    if (!isDev) {
-      serverProcess = startStandaloneServer(port);
-      await waitForServer(url, serverProcess);
-    } else {
+    let url;
+    if (isDev) {
+      url = "http://127.0.0.1:3000";
       await waitForServer(url, null);
+    } else {
+      url = await startStandaloneServerWithRetry();
     }
 
     mainWindow = new BrowserWindow({
