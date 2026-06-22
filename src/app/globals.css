@@ -159,3 +159,13 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 120px;
 }
+
+/* Desktop low-power mode: the Electron shell toggles `.low-power` on <html>
+   (on battery, hidden, or minimized — see electron/preload.js). Drop the
+   GPU-expensive glass blur to save power; restored on AC / when visible. */
+html.low-power *,
+html.low-power *::before,
+html.low-power *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

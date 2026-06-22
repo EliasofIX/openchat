@@ -19,10 +19,13 @@ function run(command, args, env = process.env) {
   });
 }
 
-async function waitForServer(url, timeoutMs = 120_000) {
+async function waitForServer(url, child, timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
+    if (child && (child.exitCode !== null || child.signalCode !== null)) {
+      throw new Error(`Dev server exited before ${url} became reachable`);
+    }
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(2_000) });
       if (res.ok || res.status < 500) return;
@@ -47,7 +50,13 @@ process.on("SIGTERM", shutdown);
 console.log("Starting Next.js dev server…\n");
 nextProcess = run("npm", ["run", "dev"]);
 
-await waitForServer(devUrl);
+try {
+  await waitForServer(devUrl, nextProcess);
+} catch (err) {
+  console.error(`\n${err.message}`);
+  nextProcess?.kill();
+  process.exit(1);
+}
 console.log("\nLaunching Electron…\n");
 
 electronProcess = run("npx", ["electron", "."], {

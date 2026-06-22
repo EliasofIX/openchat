@@ -96,6 +96,16 @@ To swap providers, edit the route (or `ai-completion.ts`), keep the same `Readab
 - `src/lib/types.ts` — shared `Message`, `Conversation`, `UserSettings`, etc.
 - Keep types small and colocated; extend here rather than scattering duplicates
 
+### Desktop (Electron)
+
+- `electron/main.mjs` spawns the Next.js standalone server as a child and opens the window. Clean it up on **every** exit path — `before-quit`, `window-all-closed`, `SIGINT`/`SIGTERM`, `uncaughtException`, `process.exit` — with a `SIGTERM`→`SIGKILL` fallback so a packaged build never orphans a Node process. The `SIGKILL` timer only fires while the event loop is alive, so `before-quit` must `event.preventDefault()` and resume the quit from the child's `exit` (with a hard-cap `app.exit`) — otherwise the main process exits first and orphans a server that ignored `SIGTERM`.
+- Hold a single-instance lock (`app.requestSingleInstanceLock()`): one app = one server; a second launch just focuses the window.
+- `createWindow` is async (it awaits the server), so guard it with an in-flight flag — a dock-click `activate` during startup would otherwise spawn a second server and orphan one. On startup failure, `dialog.showErrorBox` before quitting instead of vanishing silently.
+- `waitForServer` (in both `main.mjs` and `dev.mjs`) must fast-fail when the spawned server process exits — or fails to spawn at all (an ENOENT-style failure emits `error`, never `exit`, so also track a spawn-error flag) — instead of polling until the timeout.
+- Guard `will-navigate`, not just `setWindowOpenHandler`: a plain link in a reply navigates the *current* window and would replace the app with an external page. Allow same-origin navigations (compare `new URL(target).origin`), `preventDefault` the rest, and hand http/https off to `shell.openExternal`.
+- Self-heal the window: reload once on a non-clean `render-process-gone` and on a main-frame `did-fail-load`, sharing **one** rate-limit timestamp (a repeat within ~10s shows an error / gives up) so the two paths can't loop and drain the battery. Ignore `did-fail-load` subframe failures and ERR_ABORTED (`-3`) — the code emitted when `will-navigate` cancels an external link.
+- Battery: keep `backgroundThrottling: true` and push a `power-mode` IPC signal (on-battery / hidden / minimized / blurred) that `electron/preload.js` turns into a `.low-power` class on `<html>`; gate GPU-heavy effects (glass `backdrop-filter`) behind it. Avoid `powerSaveBlocker` for idle UI and any polling that wakes the CPU.
+
 ---
 
 ## Code style
