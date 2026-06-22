@@ -155,6 +155,17 @@ npm run build    # production build
 npm run start    # serve the production build
 ```
 
+### Desktop (Electron)
+
+```bash
+npm run electron:dev   # Next dev server + Electron window
+npm run electron:pack  # unpacked app in dist/ (quick local test)
+npm run electron:dist  # installers (dmg/zip on macOS, nsis on Windows, AppImage on Linux)
+```
+
+The desktop build embeds the Next.js standalone server so `/api/*` routes keep working.
+Set your OpenRouter key in **Settings → Model providers**, or ship a `.env.local` next to the app for defaults.
+
 ---
 
 ## License

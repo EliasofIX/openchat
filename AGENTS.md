@@ -239,3 +239,4 @@ Example (too much):
 | Attachments | `src/lib/attachments.ts`, `src/hooks/use-attachments.ts` |
 | Reasoning display | `src/lib/reasoning.ts`, `src/components/chat/reasoning-panel.tsx` |
 | Context window / usage meter | `src/lib/model-capabilities.ts`, `src/lib/estimate-context.ts`, `src/components/chat/context-usage.tsx` |
+| Electron desktop build | `electron/main.mjs`, `electron/prepare-standalone.mjs`, `package.json` `build` field — list `standalone/node_modules` as its own `extraResources` entry or electron-builder skips it |
