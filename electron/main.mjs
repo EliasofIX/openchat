@@ -18,6 +18,7 @@ let creatingWindow = false;
 let quitting = false;
 let serverExitReported = false;
 let lastLowPower = null; // Last power-mode value sent; skip re-sending an unchanged one.
+let displayIdle = false; // Screen locked or system suspended — low-power even on AC.
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -263,7 +264,11 @@ function refreshPowerMode() {
     // Power source unknown on this platform; treat as AC.
   }
   const lowPower =
-    onBattery || mainWindow.isMinimized() || !mainWindow.isVisible() || !mainWindow.isFocused();
+    onBattery ||
+    displayIdle ||
+    mainWindow.isMinimized() ||
+    !mainWindow.isVisible() ||
+    !mainWindow.isFocused();
   // blur→focus churn and powerMonitor events that don't flip the state would
   // otherwise re-send the same value and force a needless renderer style recalc.
   if (lowPower === lastLowPower) return;
@@ -272,8 +277,24 @@ function refreshPowerMode() {
 }
 
 function setupPowerMonitor() {
-  const events = ["on-battery", "on-ac", "suspend", "resume", "lock-screen", "unlock-screen"];
-  for (const event of events) powerMonitor.on(event, refreshPowerMode);
+  // on-battery/on-ac flip isOnBatteryPower(), which refreshPowerMode reads
+  // directly. But locking the screen or suspending on AC power does not blur the
+  // window, so refreshPowerMode would keep compositing glass blur and streaming
+  // at full rate for a display nobody is watching — track an idle flag for those.
+  powerMonitor.on("on-battery", refreshPowerMode);
+  powerMonitor.on("on-ac", refreshPowerMode);
+  for (const event of ["lock-screen", "suspend"]) {
+    powerMonitor.on(event, () => {
+      displayIdle = true;
+      refreshPowerMode();
+    });
+  }
+  for (const event of ["unlock-screen", "resume"]) {
+    powerMonitor.on(event, () => {
+      displayIdle = false;
+      refreshPowerMode();
+    });
+  }
 }
 
 // One running app = one standalone server. A second launch focuses the window.
