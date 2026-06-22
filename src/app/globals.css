@@ -169,3 +169,10 @@ html.low-power *::after {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* Chromium does not throttle CSS animations for a blurred-but-visible window, so
+   the infinite stream-cursor / skeleton pulse would keep the compositor awake on
+   battery. Freeze it (spinners are left alone — a frozen one reads as a hang). */
+html.low-power .animate-pulse {
+  animation: none !important;
+}

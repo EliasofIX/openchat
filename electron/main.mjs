@@ -17,6 +17,7 @@ let mainWindow = null;
 let creatingWindow = false;
 let quitting = false;
 let serverExitReported = false;
+let lastLowPower = null; // Last power-mode value sent; skip re-sending an unchanged one.
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -223,8 +224,13 @@ async function createWindow() {
     for (const event of ["minimize", "restore", "hide", "show", "blur", "focus"]) {
       mainWindow.on(event, refreshPowerMode);
     }
-    // `on` (not `once`) re-syncs low-power state after any renderer reload.
-    mainWindow.webContents.on("did-finish-load", refreshPowerMode);
+    // `on` (not `once`) re-syncs low-power state after any renderer reload. A
+    // fresh document has no `.low-power` class, so clear the cache to force a
+    // send even when the value matches what the previous page already had.
+    mainWindow.webContents.on("did-finish-load", () => {
+      lastLowPower = null;
+      refreshPowerMode();
+    });
 
     mainWindow.on("closed", () => {
       mainWindow = null;
@@ -258,6 +264,10 @@ function refreshPowerMode() {
   }
   const lowPower =
     onBattery || mainWindow.isMinimized() || !mainWindow.isVisible() || !mainWindow.isFocused();
+  // blur→focus churn and powerMonitor events that don't flip the state would
+  // otherwise re-send the same value and force a needless renderer style recalc.
+  if (lowPower === lastLowPower) return;
+  lastLowPower = lowPower;
   mainWindow.webContents.send("power-mode", lowPower);
 }
 
