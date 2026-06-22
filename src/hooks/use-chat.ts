@@ -141,17 +141,22 @@ export function useChat(options: UseChatOptions = {}) {
     let reasoningStartedAt: number | null = null;
     let reasoningDurationMs: number | undefined;
     let aborted = false;
-    let rafId: number | null = null;
+    // UI flush scheduling. Normally one render per animation frame (~60fps, smooth).
+    // On battery / hidden / blurred, the desktop shell sets `.low-power` on <html>
+    // (see electron/preload.js); there we coalesce to ~10fps so streaming doesn't
+    // re-render — and re-parse the markdown of — the growing message 60×/second.
+    let flushTimer: number | null = null;
+    let flushIsRaf = false;
 
-    const cancelRaf = () => {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
+    const cancelFlush = () => {
+      if (flushTimer === null) return;
+      if (flushIsRaf) cancelAnimationFrame(flushTimer);
+      else clearTimeout(flushTimer);
+      flushTimer = null;
     };
 
     const flushAssistantUi = () => {
-      rafId = null;
+      flushTimer = null;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!last || last.id !== assistantId) return prev;
@@ -168,8 +173,17 @@ export function useChat(options: UseChatOptions = {}) {
     };
 
     const scheduleAssistantUi = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(flushAssistantUi);
+      if (flushTimer !== null) return;
+      const lowPower =
+        typeof document !== "undefined" &&
+        document.documentElement.classList.contains("low-power");
+      if (lowPower) {
+        flushIsRaf = false;
+        flushTimer = window.setTimeout(flushAssistantUi, 100);
+      } else {
+        flushIsRaf = true;
+        flushTimer = requestAnimationFrame(flushAssistantUi);
+      }
     };
 
     const applyPart = (part: StreamPart) => {
@@ -260,7 +274,7 @@ export function useChat(options: UseChatOptions = {}) {
         scheduleAssistantUi();
       }
     } catch (err) {
-      cancelRaf();
+      cancelFlush();
       if ((err as Error).name === "AbortError") {
         aborted = true;
       } else {
@@ -278,7 +292,7 @@ export function useChat(options: UseChatOptions = {}) {
       }
     }
 
-    cancelRaf();
+    cancelFlush();
     flushAssistantUi();
 
     abortRef.current = null;

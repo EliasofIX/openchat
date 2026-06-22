@@ -290,8 +290,13 @@ if (!app.requestSingleInstanceLock()) {
     });
 
   app.on("window-all-closed", () => {
-    stopServer();
-    if (process.platform !== "darwin") app.quit();
+    // macOS keeps the app alive after the last window closes; free the idle server.
+    // Elsewhere, quit and let `before-quit` run the coordinated (wait-for-exit)
+    // shutdown — stopping the server here would null serverProcess and make
+    // before-quit a no-op, risking an orphan if the server ignores SIGTERM (the
+    // SIGKILL fallback is unref'd and can't fire once the loop exits).
+    if (process.platform === "darwin") stopServer();
+    else app.quit();
   });
 
   app.on("activate", () => {
