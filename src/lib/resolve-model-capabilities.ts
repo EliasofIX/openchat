@@ -10,8 +10,12 @@ import type { ModelProvider } from "@/lib/types";
 type OpenRouterModelsResponse = {
   data?: Array<{
     id: string;
+    context_length?: number | null;
     architecture?: {
       input_modalities?: string[];
+    };
+    top_provider?: {
+      context_length?: number | null;
     };
   }>;
 };
@@ -68,7 +72,7 @@ export async function resolveOllamaCapabilities(
     throw new Error(detail || `Ollama returned ${res.status}.`);
   }
 
-  const body = (await res.json()) as Parameters<typeof capabilitiesFromOllamaShow>[0];
+  const body = (await res.json()) as import("@/lib/model-capabilities").OllamaShowResponse;
   return capabilitiesFromOllamaShow(body);
 }
 

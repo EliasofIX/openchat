@@ -4,7 +4,7 @@ import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from "reac
 import { ArrowUp, Plus, Square } from "@/components/icons";
 import { AttachmentPreviewList } from "./attachment-preview";
 import { ACCEPTED_FILE_TYPES } from "@/lib/attachments";
-import { cn } from "@/lib/utils";
+import { cn, glassPill } from "@/lib/utils";
 import type { PendingAttachment } from "@/lib/types";
 
 type Props = {
@@ -72,8 +72,12 @@ export function ChatInput({
           if (canSend) onSubmit();
         }}
         className={cn(
-          "relative flex items-end gap-2 rounded-2xl border border-border bg-card px-3 py-2.5",
-          "shadow-sm transition focus-within:border-foreground/30 focus-within:shadow-md",
+          glassPill(
+            "relative flex items-end gap-1.5 rounded-full px-2.5 py-2",
+            "transition-colors duration-200",
+            "focus-within:border-black/10 focus-within:bg-white/65",
+            "dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.09]",
+          ),
         )}
       >
         <input
@@ -96,8 +100,8 @@ export function ChatInput({
           aria-label="Attach files"
           title="Attach images, PDFs, or code files"
           className={cn(
-            "mb-0.5 grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition",
-            "hover:bg-muted hover:text-foreground disabled:opacity-40",
+            "mb-0.5 grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition",
+            "hover:bg-foreground/10 hover:text-foreground disabled:opacity-40",
           )}
         >
           <Plus size={18} />
@@ -136,7 +140,7 @@ export function ChatInput({
               "grid size-9 shrink-0 place-items-center rounded-full transition",
               canSend
                 ? "bg-foreground text-background hover:opacity-90"
-                : "bg-muted text-muted-foreground cursor-not-allowed",
+                : "bg-foreground/10 text-muted-foreground cursor-not-allowed",
             )}
           >
             <ArrowUp size={16} />

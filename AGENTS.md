@@ -77,6 +77,7 @@ There is **no SSE framing, no JSON envelope protocol, no SDK** between model and
 - **Chat streaming:** `src/app/api/chat/route.ts`
 - **Non-streaming completions** (e.g. title generation): `src/lib/ai-completion.ts`
 - **Provider helpers / model resolution:** `src/lib/providers.ts`
+- **Model context windows:** read `context_length` from OpenRouter `/models` and `*.context_length` from Ollama `/api/show` `model_info`; cap Ollama by parsed `num_ctx`. Extend `ModelCapabilities` in `src/lib/model-capabilities.ts` — do not add a separate metadata route.
 - **Client never sees API keys** — keys come from env or user settings, resolved server-side
 
 To swap providers, edit the route (or `ai-completion.ts`), keep the same `ReadableStream` / NDJSON pattern on the wire.
@@ -237,3 +238,4 @@ Example (too much):
 | Assistant message rendering | `src/components/markdown.tsx`, `src/components/chat/message.tsx` |
 | Attachments | `src/lib/attachments.ts`, `src/hooks/use-attachments.ts` |
 | Reasoning display | `src/lib/reasoning.ts`, `src/components/chat/reasoning-panel.tsx` |
+| Context window / usage meter | `src/lib/model-capabilities.ts`, `src/lib/estimate-context.ts`, `src/components/chat/context-usage.tsx` |

@@ -2,13 +2,16 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Brain, Menu, SquarePen } from "@/components/icons";
 import { ChatInput } from "./chat-input";
+import { ContextUsage } from "./context-usage";
 import { MessageItem } from "./message";
 import type { SettingsTab } from "./settings-dialog";
 import { Sidebar } from "./sidebar";
 import { useChat } from "@/hooks/use-chat";
 import { useAttachments } from "@/hooks/use-attachments";
+import { useContextUsage } from "@/hooks/use-context-usage";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
@@ -20,7 +23,7 @@ import {
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
 import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
-import { cn } from "@/lib/utils";
+import { cn, glassPill } from "@/lib/utils";
 
 const SettingsDialog = dynamic(
   () => import("./settings-dialog").then((m) => m.SettingsDialog),
@@ -77,6 +80,23 @@ export function Chat() {
   );
 
   const [input, setInput] = useState("");
+  const contextUsage = useContextUsage({
+    messages: chat.messages,
+    systemPrompt,
+    draftText: input,
+    draftAttachments: attachmentsHook.readyAttachments.map(
+      ({ id, kind, name, mimeType, dataUrl, textContent }) => ({
+        id,
+        kind,
+        name,
+        mimeType,
+        dataUrl,
+        textContent,
+      }),
+    ),
+    contextTokens: modelCapabilities.capabilities.contextTokens,
+  });
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
@@ -152,7 +172,7 @@ export function Chat() {
   };
 
   return (
-    <div className="relative flex h-dvh flex-col bg-background text-foreground">
+    <div className="relative h-dvh overflow-hidden bg-background text-foreground">
       <Sidebar
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
@@ -207,11 +227,11 @@ export function Chat() {
         </IconButton>
       </header>
 
-      <main ref={mainRef} className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="h-full overflow-y-auto">
         {chat.messages.length === 0 ? (
           <EmptyState name={settingsHook.settings.name} />
         ) : (
-          <div className="mx-auto w-full max-w-3xl px-4 pt-16 pb-40">
+          <div className="mx-auto w-full max-w-3xl px-4 pt-16 pb-44">
             <div className="space-y-6">
               {hiddenCount > 0 && (
                 <div className="flex justify-center">
@@ -255,24 +275,40 @@ export function Chat() {
         )}
       </main>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
-        <div className="pointer-events-auto mx-auto w-full max-w-3xl bg-gradient-to-t from-background from-70% via-background/90 to-transparent px-4 pb-4 pt-8">
+      <div className="pointer-events-none absolute inset-x-0 bottom-7 z-20">
+        <div className="pointer-events-auto mx-auto w-full max-w-3xl px-4">
           {settingsHook.settings.reasoning.enabled && (
-            <div className="mb-2 flex justify-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+            <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+              <span
+                className={glassPill(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium text-muted-foreground",
+                )}
+              >
                 {PROVIDER_LABELS[settingsHook.settings.provider]}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+              <span
+                className={glassPill(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium text-muted-foreground",
+                )}
+              >
                 <Brain size={11} className="text-violet-500" />
                 Reasoning
                 <span className="text-muted-foreground/70">·</span>
                 {REASONING_EFFORT_LABELS[settingsHook.settings.reasoning.effort]}
               </span>
+              <ContextUsage
+                usage={contextUsage}
+                loading={modelCapabilities.loading}
+              />
             </div>
           )}
           {!settingsHook.settings.reasoning.enabled && (
-            <div className="mb-2 flex justify-center">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+            <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+              <span
+                className={glassPill(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium text-muted-foreground",
+                )}
+              >
                 {PROVIDER_LABELS[settingsHook.settings.provider]}
                 {getActiveModel(settingsHook.settings) && (
                   <>
@@ -283,6 +319,10 @@ export function Chat() {
                   </>
                 )}
               </span>
+              <ContextUsage
+                usage={contextUsage}
+                loading={modelCapabilities.loading}
+              />
             </div>
           )}
           <ChatInput
@@ -298,12 +338,28 @@ export function Chat() {
             isProcessingAttachments={attachmentsHook.isProcessing}
             hasUnsupportedAttachments={attachmentsHook.hasUnsupported}
           />
-          <p className="mt-2 text-center text-[10px] text-muted-foreground">
-            The model can make mistakes. Verify important information.
-          </p>
         </div>
       </div>
+
+      <ChatDisclaimer />
     </div>
+  );
+}
+
+function ChatDisclaimer() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <p className="pointer-events-none fixed inset-x-0 bottom-0 z-50 pb-2 text-center text-[10px] text-muted-foreground">
+      The model can make mistakes. Verify important information.
+    </p>,
+    document.body,
   );
 }
 
