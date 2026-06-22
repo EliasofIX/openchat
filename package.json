@@ -56,7 +56,10 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": ["dmg", "zip"]
+      "target": ["dmg", "zip"],
+      "extendInfo": {
+        "NSSupportsAutomaticGraphicsSwitching": true
+      }
     },
     "win": {
       "target": ["nsis"]

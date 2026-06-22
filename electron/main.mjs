@@ -253,6 +253,18 @@ function stopServer() {
   force.unref?.();
 }
 
+// Synchronous last-resort kill for fatal exits (uncaughtException, process exit).
+// stopServer()'s graceful SIGTERM→SIGKILL relies on the event loop staying alive
+// to fire the deferred SIGKILL — but these paths stop the loop immediately, so a
+// SIGTERM that Next stalls on (e.g. draining an in-flight stream) would orphan the
+// process. The standalone server is stateless (all state lives in the browser), so
+// SIGKILL loses nothing. Idempotent: nulls serverProcess so a re-entrant exit no-ops.
+function forceKillServer() {
+  const child = serverProcess;
+  serverProcess = null;
+  if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+}
+
 function refreshPowerMode() {
   // powerMonitor fires app-wide, including while the window is tearing down, so
   // verify the webContents is still alive before sending — otherwise send() throws.
@@ -356,13 +368,15 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-// Last-resort cleanup so a crash or kill never orphans the Node server.
-process.on("exit", stopServer);
+// Last-resort cleanup so a crash or kill never orphans the Node server. These
+// paths tear down the event loop immediately, so they SIGKILL synchronously
+// instead of relying on stopServer()'s deferred fallback (see forceKillServer).
+process.on("exit", forceKillServer);
 process.on("SIGINT", () => app.quit());
 process.on("SIGTERM", () => app.quit());
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception in main process:", err);
-  stopServer();
+  forceKillServer();
   app.exit(1);
 });
 process.on("unhandledRejection", (reason) => {
