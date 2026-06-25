@@ -14,7 +14,7 @@ type ReasoningDelta = {
 };
 
 const THINKING_TAG_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ["<think>", "</think>"],
+  ["\x3cthink\x3e", "\x3c/think\x3e"],
   ["<think>", "</think>"],
 ];
 
@@ -35,6 +35,9 @@ function decodeOpenRouterReasoningData(data: string): string {
 function extractDetailText(entry: ReasoningDetail): string {
   if (entry.type === "reasoning.text" && entry.text) return entry.text;
   if (entry.type === "reasoning.summary" && entry.summary) return entry.summary;
+  if (entry.type === "redacted_thinking" && entry.data) {
+    return decodeOpenRouterReasoningData(entry.data);
+  }
   if (entry.text) return entry.text;
   if (entry.summary) return entry.summary;
   if (entry.data) return decodeOpenRouterReasoningData(entry.data);
@@ -54,6 +57,97 @@ export function extractReasoningText(delta: ReasoningDelta | undefined | null): 
 }
 
 export type ThinkingTagSplit = { reasoning: string; content: string };
+
+// Pulls tagged thinking blocks out of a complete assistant string (Hermes 4, DeepHermes, …).
+export function splitThinkingFromContent(text: string): ThinkingTagSplit {
+  let reasoning = "";
+  let content = text;
+
+  for (const [open, close] of THINKING_TAG_PAIRS) {
+    let safety = 0;
+    while (safety++ < 32) {
+      const start = content.indexOf(open);
+      if (start === -1) break;
+      const end = content.indexOf(close, start + open.length);
+      if (end === -1) break;
+      reasoning += content.slice(start + open.length, end);
+      content = content.slice(0, start) + content.slice(end + close.length);
+    }
+  }
+
+  return { reasoning, content };
+}
+
+// Untagged monologue before the answer — common when providers stream thinking in delta.content.
+export function splitPlainReasoningFromContent(text: string): ThinkingTagSplit {
+  const tagged = splitThinkingFromContent(text);
+  if (tagged.reasoning) return tagged;
+
+  const idx = text.indexOf("\n\n");
+  if (idx >= 0) {
+    const reasoning = text.slice(0, idx).trimEnd();
+    const content = text.slice(idx + 2).trimStart();
+    if (reasoning && content) return { reasoning, content };
+  }
+
+  return { reasoning: "", content: text };
+}
+
+// Streams untagged reasoning that arrives in delta.content before the first blank line.
+export function createPlainReasoningSplitter() {
+  let carry = "";
+  let inContent = false;
+
+  const holdPartialDelimiter = (text: string): { emit: string; hold: string } => {
+    const delimiter = "\n\n";
+    for (let len = Math.min(text.length, delimiter.length - 1); len >= 1; len--) {
+      const suffix = text.slice(-len);
+      if (delimiter.startsWith(suffix)) {
+        return { emit: text.slice(0, -len), hold: suffix };
+      }
+    }
+    return { emit: text, hold: "" };
+  };
+
+  const push = (text: string): ThinkingTagSplit => {
+    if (inContent) return { reasoning: "", content: text };
+
+    let reasoning = "";
+    let content = "";
+    carry += text;
+
+    while (carry.length > 0) {
+      const idx = carry.indexOf("\n\n");
+      if (idx !== -1) {
+        reasoning += carry.slice(0, idx);
+        carry = carry.slice(idx + 2);
+        inContent = true;
+        content += carry;
+        carry = "";
+        break;
+      }
+
+      const { emit, hold } = holdPartialDelimiter(carry);
+      reasoning += emit;
+      carry = hold;
+      break;
+    }
+
+    return { reasoning, content };
+  };
+
+  const flush = (): ThinkingTagSplit => {
+    if (inContent) {
+      const content = carry;
+      carry = "";
+      return { reasoning: "", content };
+    }
+    if (!carry) return { reasoning: "", content: "" };
+    return splitPlainReasoningFromContent(carry);
+  };
+
+  return { push, flush };
+}
 
 // Splits Hermes / DeepHermes thinking tags that some models stream inside `content`.
 export function createThinkingTagSplitter() {
