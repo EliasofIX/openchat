@@ -93,10 +93,114 @@ export function splitPlainReasoningFromContent(text: string): ThinkingTagSplit {
   return { reasoning: "", content: text };
 }
 
+// Words/phrases that mark text as model self-talk rather than user-facing
+// answer. Tuned to be specific — "Let me" alone matches "Let me know" (a
+// perfectly normal answer phrase), so we require a known meta verb after it.
+const REASONING_META =
+  /\b(the user|user said|user wants|user's|I need to|Let me (?:think|see|check|verify|figure|recall|reason|consider|review|first|just|use|try|make sure|start|begin|outline|draft|plan)|I should|Maybe I\b|I'll just|I will just|I don't (?:think|know|see|want)|check if|make sure (?:to|I|that)|my response|the answer (?:is|should|will|must|would)|the (?:format|response|reply) (?:is|should|will|must)|after thinking|let's go with|alright,?\s+(?:let|here|so|i|now|then)|here goes|here's (?:the|my) (?:answer|reply|response)|to summari[sz]e|in summary|should work|going to (?:say|reply|respond|answer|write))\b/i;
+
+// Pulls a trailing user-facing answer out of a monologue. Walks backward
+// through sentence boundaries (`. ` `! ` `? `) and remembers the longest
+// contiguous trailing portion whose first sentence isn't model self-talk; if
+// it crosses a meta sentence and then re-enters clean text, it stops — the
+// answer must be one unbroken clean stretch at the end.
+export function splitTrailingAnswerFromReasoning(text: string): ThinkingTagSplit {
+  const trimmed = text.trimEnd();
+  if (!trimmed) return { reasoning: "", content: "" };
+
+  const MAX_CONTENT = 2000;
+  let best: ThinkingTagSplit | null = null;
+  let metaWall = false;
+
+  for (let i = trimmed.length - 2; i >= 0; i--) {
+    const ch = trimmed[i];
+    if (ch !== "." && ch !== "!" && ch !== "?") continue;
+    if (trimmed[i + 1] !== " ") continue;
+
+    const reasoning = trimmed.slice(0, i + 1).trimEnd();
+    const content = trimmed.slice(i + 2).trimStart();
+    if (!reasoning || !content) continue;
+    if (content.length > MAX_CONTENT) break;
+
+    const firstEndMatch = content.match(/^[\s\S]*?[.!?](?:\s|$)/);
+    const firstSentence = firstEndMatch ? firstEndMatch[0] : content;
+
+    if (REASONING_META.test(firstSentence)) {
+      if (best) metaWall = true;
+      continue;
+    }
+    if (metaWall) break;
+
+    best = { reasoning, content };
+  }
+
+  return best ?? { reasoning: trimmed, content: "" };
+}
+
+function splitUntaggedMonologue(text: string): ThinkingTagSplit {
+  const plain = splitPlainReasoningFromContent(text);
+  if (plain.reasoning && plain.content) return plain;
+  if (plain.content && !plain.reasoning) {
+    const rescued = splitTrailingAnswerFromReasoning(plain.content);
+    if (rescued.content) return rescued;
+  }
+  return plain;
+}
+
+// Reconcile streamed reasoning/content after the full assistant string is known.
+//
+// Two real-world messes this handles:
+//   1) Providers (or `createPlainReasoningSplitter.flush`) stream the whole
+//      monologue — final answer included — as reasoning, then emit the rescued
+//      answer separately as content. The answer ends up duplicated in both
+//      channels; strip the trailing copy from reasoning.
+//   2) Models that leak their own self-talk into `delta.content` even when the
+//      reasoning channel is active (e.g. "Alright, "X" should work. X"). When
+//      the leak overlaps with the end of `reasoning`, use that as a signal to
+//      keep just the real trailing answer in content.
+export function reconcileReasoningAndContent(
+  reasoning: string,
+  content: string,
+): ThinkingTagSplit {
+  let r = reasoning.trim();
+  let c = content.trim();
+
+  if (!r && !c) return { reasoning: "", content: "" };
+  if (!r) return splitUntaggedMonologue(c);
+  if (!c) return splitUntaggedMonologue(r);
+  if (r === c) return splitUntaggedMonologue(r);
+
+  // (2) Leaky content channel — trust the rescued tail when either (a) the
+  // duplicate already lives at the end of `reasoning`, or (b) the rescued
+  // preamble is clearly model self-talk. Otherwise we'd over-trim a normal
+  // multi-sentence answer.
+  const tail = splitTrailingAnswerFromReasoning(c);
+  if (tail.reasoning && tail.content) {
+    const rEndsWithTail = r.endsWith(tail.content);
+    const preambleIsMeta = REASONING_META.test(tail.reasoning);
+    if (rEndsWithTail || preambleIsMeta) {
+      c = tail.content;
+      if (preambleIsMeta && !rEndsWithTail) {
+        r = `${r}\n\n${tail.reasoning}`;
+      }
+    }
+  }
+
+  // (1) Drop the duplicate trailing answer that the streamer left in reasoning.
+  if (r.endsWith(c)) {
+    r = r.slice(0, r.length - c.length).trimEnd();
+  }
+
+  if (r && c) return { reasoning: r, content: c };
+  if (r) return splitUntaggedMonologue(r);
+  return splitUntaggedMonologue(c);
+}
+
 // Streams untagged reasoning that arrives in delta.content before the first blank line.
 export function createPlainReasoningSplitter() {
   let carry = "";
   let inContent = false;
+  let streamedBeforeDelimiter = "";
 
   const holdPartialDelimiter = (text: string): { emit: string; hold: string } => {
     const delimiter = "\n\n";
@@ -133,6 +237,7 @@ export function createPlainReasoningSplitter() {
       break;
     }
 
+    streamedBeforeDelimiter += reasoning;
     return { reasoning, content };
   };
 
@@ -142,8 +247,15 @@ export function createPlainReasoningSplitter() {
       carry = "";
       return { reasoning: "", content };
     }
-    if (!carry) return { reasoning: "", content: "" };
-    return splitPlainReasoningFromContent(carry);
+
+    const full = streamedBeforeDelimiter + carry;
+    streamedBeforeDelimiter = "";
+    carry = "";
+    if (!full) return { reasoning: "", content: "" };
+
+    // Reasoning before the delimiter was already streamed; only rescue the answer.
+    const split = splitUntaggedMonologue(full);
+    return { reasoning: "", content: split.content };
   };
 
   return { push, flush };

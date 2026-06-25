@@ -20,7 +20,7 @@ import {
   createPlainReasoningSplitter,
   createThinkingTagSplitter,
   extractReasoningText,
-  splitPlainReasoningFromContent,
+  reconcileReasoningAndContent,
 } from "@/lib/reasoning";
 import type { ModelProvider, ReasoningSettings } from "@/lib/types";
 
@@ -264,7 +264,11 @@ export async function POST(req: Request) {
             if (plainTail.reasoning) tailReasoning += plainTail.reasoning;
             if (plainTail.content) tailContent += plainTail.content;
           } else if (!tailReasoning && tailContent) {
-            const split = splitPlainReasoningFromContent(tailContent);
+            const split = reconcileReasoningAndContent("", tailContent);
+            tailReasoning = split.reasoning;
+            tailContent = split.content;
+          } else if (tailReasoning && !tailContent) {
+            const split = reconcileReasoningAndContent(tailReasoning, "");
             tailReasoning = split.reasoning;
             tailContent = split.content;
           }

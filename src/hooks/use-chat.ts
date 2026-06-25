@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildApiContent } from "@/lib/build-api-content";
 import { hydrateMessages } from "@/lib/hydrate-messages";
-import { splitPlainReasoningFromContent } from "@/lib/reasoning";
+import { reconcileReasoningAndContent } from "@/lib/reasoning";
 import type { Message, MessageAttachment, ModelProvider, ReasoningSettings } from "@/lib/types";
 
 function makeId() {
@@ -296,17 +296,10 @@ export function useChat(options: UseChatOptions = {}) {
     cancelFlush();
     flushAssistantUi();
 
-    if (
-      accumulatedReasoning === "" &&
-      accumulated &&
-      reasoningRef.current?.enabled &&
-      reasoningRef.current?.showInResponse
-    ) {
-      const split = splitPlainReasoningFromContent(accumulated);
-      if (split.reasoning) {
-        accumulatedReasoning = split.reasoning;
-        accumulated = split.content;
-      }
+    if (reasoningRef.current?.enabled && reasoningRef.current?.showInResponse) {
+      const split = reconcileReasoningAndContent(accumulatedReasoning, accumulated);
+      accumulatedReasoning = split.reasoning;
+      accumulated = split.content;
     }
 
     abortRef.current = null;
