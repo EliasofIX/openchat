@@ -14,8 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildApiContent } from "@/lib/build-api-content";
 import { hydrateMessages } from "@/lib/hydrate-messages";
-import { finalizeHermesAssistantOutput, splitThinkingFromContent } from "@/lib/reasoning";
-import { isHermesReasoningModel } from "@/lib/openrouter";
+import { splitPlainReasoningFromContent } from "@/lib/reasoning";
 import type { Message, MessageAttachment, ModelProvider, ReasoningSettings } from "@/lib/types";
 
 function makeId() {
@@ -297,20 +296,16 @@ export function useChat(options: UseChatOptions = {}) {
     cancelFlush();
     flushAssistantUi();
 
-    if (reasoningRef.current?.enabled && reasoningRef.current?.showInResponse) {
-      const model = modelRef.current?.trim();
-      const splitSource =
-        accumulatedReasoning || accumulated
-          ? accumulatedReasoning || accumulated
-          : "";
-      if (splitSource) {
-        const split = isHermesReasoningModel(model)
-          ? finalizeHermesAssistantOutput(splitSource)
-          : splitThinkingFromContent(splitSource);
-        if (split.reasoning) {
-          accumulatedReasoning = split.reasoning;
-          accumulated = split.content;
-        }
+    if (
+      accumulatedReasoning === "" &&
+      accumulated &&
+      reasoningRef.current?.enabled &&
+      reasoningRef.current?.showInResponse
+    ) {
+      const split = splitPlainReasoningFromContent(accumulated);
+      if (split.reasoning) {
+        accumulatedReasoning = split.reasoning;
+        accumulated = split.content;
       }
     }
 

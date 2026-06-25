@@ -78,34 +78,74 @@ export function splitThinkingFromContent(text: string): ThinkingTagSplit {
   return { reasoning, content };
 }
 
-// Hermes sometimes streams untagged meta-monologue before the user-facing reply.
-function splitHermesUntaggedMonologue(text: string): ThinkingTagSplit {
-  const trimmed = text.trim();
-  if (!trimmed) return { reasoning: "", content: text };
+// Untagged monologue before the answer — common when providers stream thinking in delta.content.
+export function splitPlainReasoningFromContent(text: string): ThinkingTagSplit {
+  const tagged = splitThinkingFromContent(text);
+  if (tagged.reasoning) return tagged;
 
-  const blocks = trimmed.split(/\n\n+/);
-  if (blocks.length < 2) return { reasoning: "", content: text };
-
-  const last = blocks[blocks.length - 1]!.trim();
-  const earlier = blocks.slice(0, -1).join("\n\n").trim();
-  if (!earlier || earlier.length < 80) return { reasoning: "", content: text };
-
-  if (
-    last.length <= Math.max(400, earlier.length * 0.75) &&
-    /^(hello|hi|hey|sure|of course|i'd|i would|the answer|here's|here is|to answer|in summary|so,)/i.test(
-      last,
-    )
-  ) {
-    return { reasoning: earlier, content: last };
+  const idx = text.indexOf("\n\n");
+  if (idx >= 0) {
+    const reasoning = text.slice(0, idx).trimEnd();
+    const content = text.slice(idx + 2).trimStart();
+    if (reasoning && content) return { reasoning, content };
   }
 
   return { reasoning: "", content: text };
 }
 
-export function finalizeHermesAssistantOutput(text: string): ThinkingTagSplit {
-  const tagged = splitThinkingFromContent(text);
-  if (tagged.reasoning) return tagged;
-  return splitHermesUntaggedMonologue(text);
+// Streams untagged reasoning that arrives in delta.content before the first blank line.
+export function createPlainReasoningSplitter() {
+  let carry = "";
+  let inContent = false;
+
+  const holdPartialDelimiter = (text: string): { emit: string; hold: string } => {
+    for (let len = Math.min(text.length, 1); len >= 1; len--) {
+      const suffix = text.slice(-len);
+      if ("\n\n".startsWith(suffix)) {
+        return { emit: text.slice(0, -len), hold: suffix };
+      }
+    }
+    return { emit: text, hold: "" };
+  };
+
+  const push = (text: string): ThinkingTagSplit => {
+    if (inContent) return { reasoning: "", content: text };
+
+    let reasoning = "";
+    let content = "";
+    carry += text;
+
+    while (carry.length > 0) {
+      const idx = carry.indexOf("\n\n");
+      if (idx !== -1) {
+        reasoning += carry.slice(0, idx);
+        carry = carry.slice(idx + 2);
+        inContent = true;
+        content += carry;
+        carry = "";
+        break;
+      }
+
+      const { emit, hold } = holdPartialDelimiter(carry);
+      reasoning += emit;
+      carry = hold;
+      break;
+    }
+
+    return { reasoning, content };
+  };
+
+  const flush = (): ThinkingTagSplit => {
+    if (inContent) {
+      const content = carry;
+      carry = "";
+      return { reasoning: "", content };
+    }
+    if (!carry) return { reasoning: "", content: "" };
+    return splitPlainReasoningFromContent(carry);
+  };
+
+  return { push, flush };
 }
 
 // Splits Hermes / DeepHermes thinking tags that some models stream inside `content`.

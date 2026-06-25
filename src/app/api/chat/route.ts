@@ -13,16 +13,15 @@ import {
 import {
   buildOpenRouterReasoning,
   hermesReasoningSystemDirective,
-  isHermesReasoningModel,
   shouldIncludeReasoningInRequest,
   shouldStreamReasoning,
 } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
 import {
+  createPlainReasoningSplitter,
   createThinkingTagSplitter,
   extractReasoningText,
-  finalizeHermesAssistantOutput,
-  splitThinkingFromContent,
+  splitPlainReasoningFromContent,
 } from "@/lib/reasoning";
 import type { ModelProvider, ReasoningSettings } from "@/lib/types";
 
@@ -96,14 +95,6 @@ function withReasoningSystemPrompt(
   }
 
   return [{ role: "system", content: directive }, ...messages];
-}
-
-function splitTaggedContent(
-  text: string,
-  reasoningEnabled: boolean,
-): { reasoning: string; content: string } {
-  if (!reasoningEnabled || !text) return { reasoning: "", content: text };
-  return splitThinkingFromContent(text);
 }
 
 function createOpenRouterClient(apiKey: string) {
@@ -225,11 +216,8 @@ export async function POST(req: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const tagSplitter = streamReasoning ? createThinkingTagSplitter() : null;
-      let hermesUntaggedMode = Boolean(
-        streamReasoning &&
-          reasoning?.enabled &&
-          isHermesReasoningModel(resolvedModel),
-      );
+      const plainSplitter = streamReasoning ? createPlainReasoningSplitter() : null;
+      let sawDedicatedReasoning = false;
 
       try {
         for await (const chunk of upstream) {
@@ -237,34 +225,18 @@ export async function POST(req: Request) {
           let reasoningText = extractDeltaReasoning(delta);
           let contentText = delta?.content ?? "";
 
+          if (reasoningText) sawDedicatedReasoning = true;
+
           if (tagSplitter && contentText) {
             const split = tagSplitter.push(contentText);
             if (split.reasoning) reasoningText += split.reasoning;
             contentText = split.content;
           }
 
-          if (!reasoningText && contentText && showReasoningInStream) {
-            const split = splitTaggedContent(contentText, true);
-            if (split.reasoning) {
-              reasoningText = split.reasoning;
-              contentText = split.content;
-            }
-          }
-
-          if (hermesUntaggedMode) {
-            if (reasoningText) {
-              hermesUntaggedMode = false;
-            } else if (contentText) {
-              const hasTags =
-                contentText.includes("<think>") ||
-                contentText.includes("\x3cthink\x3e");
-              if (hasTags) {
-                hermesUntaggedMode = false;
-              } else {
-                reasoningText = contentText;
-                contentText = "";
-              }
-            }
+          if (plainSplitter && contentText && !sawDedicatedReasoning) {
+            const split = plainSplitter.push(contentText);
+            if (split.reasoning) reasoningText += split.reasoning;
+            contentText = split.content;
           }
 
           if (streamReasoning) {
@@ -282,17 +254,20 @@ export async function POST(req: Request) {
           let tailReasoning = tail.reasoning;
           let tailContent = tail.content;
 
-          if (!tailReasoning && tailContent && showReasoningInStream) {
-            const split = splitTaggedContent(tailContent, true);
-            tailReasoning = split.reasoning;
+          if (plainSplitter && tailContent && !sawDedicatedReasoning) {
+            const split = plainSplitter.push(tailContent);
+            if (split.reasoning) tailReasoning += split.reasoning;
             tailContent = split.content;
           }
 
-          if (hermesUntaggedMode && !tailReasoning && tailContent) {
-            const split = finalizeHermesAssistantOutput(tailContent);
+          if (plainSplitter && !sawDedicatedReasoning) {
+            const plainTail = plainSplitter.flush();
+            if (plainTail.reasoning) tailReasoning += plainTail.reasoning;
+            if (plainTail.content) tailContent += plainTail.content;
+          } else if (!tailReasoning && tailContent) {
+            const split = splitPlainReasoningFromContent(tailContent);
             tailReasoning = split.reasoning;
             tailContent = split.content;
-            hermesUntaggedMode = false;
           }
 
           if (tailReasoning && showReasoningInStream) {
