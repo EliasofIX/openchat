@@ -159,7 +159,7 @@ export function SettingsDialog({
                     placeholder="Tone, format, things to remember about you…"
                     rows={3}
                     className={cn(
-                      "w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none",
+                      "w-full resize-y rounded-lg border border-border bg-muted px-2.5 py-2 text-sm text-foreground outline-none",
                       "placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                     )}
                   />
@@ -181,7 +181,7 @@ export function SettingsDialog({
               <SettingsSection
                 icon={Brain}
                 title="Reasoning"
-                description="Extended thinking for supported models (o-series, DeepSeek R1, Qwen thinking, etc.)."
+                description="Extended thinking for supported models (Hermes 4, o-series, DeepSeek R1, Qwen thinking, etc.)."
               >
                 <SettingsToggleRow
                   label="Enable reasoning"
@@ -191,7 +191,7 @@ export function SettingsDialog({
                 />
 
                 {reasoningEnabled && (
-                  <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
+                  <div className="space-y-3 rounded-xl border border-border bg-muted p-3">
                     <SettingsField label="Effort">
                       <div className="grid grid-cols-3 gap-1.5">
                         {REASONING_EFFORTS.map((effort) => (
@@ -281,8 +281,8 @@ function EffortButton({
       className={cn(
         "rounded-md border px-2 py-1.5 text-[11px] font-medium transition",
         selected
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-background text-muted-foreground hover:border-foreground/25 hover:text-foreground",
+          ? "border-foreground bg-muted text-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-foreground/15 hover:bg-muted hover:text-foreground",
       )}
     >
       {REASONING_EFFORT_LABELS[effort]}

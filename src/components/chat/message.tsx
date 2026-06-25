@@ -152,7 +152,7 @@ function UserAttachment({ attachment }: { attachment: MessageAttachment }) {
   if (attachment.kind === "image") {
     if (loading) {
       return (
-        <div className="h-24 w-32 animate-pulse rounded-xl border border-primary-foreground/20 bg-primary/40" />
+        <div className="h-24 w-32 animate-pulse rounded-xl border border-primary-foreground/30 bg-primary" />
       );
     }
     if (dataUrl) {
@@ -170,7 +170,7 @@ function UserAttachment({ attachment }: { attachment: MessageAttachment }) {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-primary-foreground/20 bg-primary/80 px-3 py-2 text-primary-foreground">
+    <div className="flex items-center gap-2 rounded-xl border border-primary-foreground/30 bg-primary px-3 py-2 text-primary-foreground">
       {attachment.kind === "pdf" ? <FileText size={14} /> : <FileCode2 size={14} />}
       <span className="max-w-[12rem] truncate text-xs">{attachment.name}</span>
     </div>

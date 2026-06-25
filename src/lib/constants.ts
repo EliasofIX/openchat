@@ -2,6 +2,5 @@
 
 export const VISIBLE_MESSAGE_LIMIT = 50;
 export const LOAD_MORE_MESSAGE_STEP = 50;
-export const SCROLL_NEAR_BOTTOM_THRESHOLD = 80;
 
 export const MAX_PDF_TEXT_BYTES = 100 * 1024;

@@ -7,7 +7,7 @@ const MarkdownDynamic = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-4 w-3/4 max-w-md animate-pulse rounded bg-muted/60" />
+      <div className="h-4 w-3/4 max-w-md animate-pulse rounded bg-muted" />
     ),
   },
 );

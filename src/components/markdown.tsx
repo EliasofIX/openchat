@@ -39,8 +39,8 @@ function CodeBlock({ className, children }: { className?: string; children: stri
   };
 
   return (
-    <div className="group relative my-4 overflow-hidden rounded-lg border border-border bg-muted/40">
-      <div className="flex items-center justify-between border-b border-border/60 bg-muted/60 px-3 py-1.5 text-xs">
+    <div className="group relative my-4 overflow-hidden rounded-lg border border-border bg-muted">
+      <div className="flex items-center justify-between border-b border-border bg-accent px-3 py-1.5 text-xs">
         <span className="font-mono text-muted-foreground">{language || "text"}</span>
         <button
           type="button"
@@ -112,7 +112,7 @@ function MarkdownInner({ content }: { content: string }) {
         "[&_a]:underline [&_a]:underline-offset-2 [&_a]:text-foreground hover:[&_a]:opacity-80",
         "[&_hr]:my-6 [&_hr]:border-border",
         "[&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm",
-        "[&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-medium [&_th]:bg-muted/60",
+        "[&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-medium [&_th]:bg-muted",
         "[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-1.5",
         "[&_.katex-display]:my-0",
       )}

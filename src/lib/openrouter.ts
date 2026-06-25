@@ -32,19 +32,17 @@ export function buildOpenRouterReasoning(
 ): OpenRouterReasoning | undefined {
   if (!settings?.enabled) return undefined;
 
-  const reasoning: OpenRouterReasoning = {
-    exclude: !settings.showInResponse,
-  };
-
   if (settings.effort === "none") {
-    reasoning.effort = "none";
-  } else {
-    reasoning.effort = settings.effort;
+    return { enabled: false, effort: "none" };
   }
 
-  return reasoning;
+  return {
+    enabled: true,
+    effort: settings.effort,
+    exclude: !settings.showInResponse,
+  };
 }
 
 export function shouldStreamReasoning(settings?: ReasoningSettings): boolean {
-  return Boolean(settings?.enabled && settings.showInResponse);
+  return Boolean(settings?.enabled);
 }

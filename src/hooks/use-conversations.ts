@@ -56,13 +56,24 @@ export function useConversations() {
   );
 
   useEffect(() => {
-    void storage.migrateIfNeeded().then(() => {
-      setConversations(storage.loadConversations());
-      const storedActiveId = storage.loadActiveId();
-      setActiveId(storedActiveId);
-      activeIdRef.current = storedActiveId;
-      setHydrated(true);
-    });
+    void storage
+      .migrateIfNeeded()
+      .catch((err) => {
+        console.warn("[openchat] Conversation migration failed:", err);
+      })
+      .finally(() => {
+        const loaded = storage.loadConversations();
+        const storedActiveId = storage.loadActiveId();
+        const activeId =
+          storedActiveId && loaded.some((c) => c.id === storedActiveId)
+            ? storedActiveId
+            : null;
+
+        setConversations(loaded);
+        setActiveId(activeId);
+        activeIdRef.current = activeId;
+        setHydrated(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -141,10 +152,17 @@ export function useConversations() {
         return next;
       });
 
-      if (savedConv) queueSave(savedConv);
+      if (savedConv) {
+        if (isNew) {
+          flushSave();
+          void storage.saveConversation(savedConv);
+        } else {
+          queueSave(savedConv);
+        }
+      }
       return result;
     },
-    [queueSave],
+    [flushSave, queueSave],
   );
 
   const setAiTitle = useCallback(

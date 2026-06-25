@@ -74,9 +74,8 @@ export function ChatInput({
         className={cn(
           glassPill(
             "relative flex items-end gap-1.5 rounded-full px-2.5 py-2",
-            "transition-colors duration-200",
-            "focus-within:border-black/10 focus-within:bg-white/65",
-            "dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.09]",
+            "bg-card transition-colors duration-200",
+            "focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25",
             "[html.has-color-accent_&]:focus-within:border-[var(--user-accent-border)]",
           ),
         )}
@@ -102,7 +101,7 @@ export function ChatInput({
           title="Attach images, PDFs, or code files"
           className={cn(
             "mb-0.5 grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition",
-            "hover:bg-foreground/10 hover:text-foreground disabled:opacity-40",
+            "hover:bg-accent hover:text-foreground disabled:opacity-40",
           )}
         >
           <Plus size={18} />
@@ -118,7 +117,7 @@ export function ChatInput({
           rows={1}
           disabled={disabled}
           className={cn(
-            "flex-1 resize-none bg-transparent px-1.5 py-1.5 text-[0.95rem] leading-6 outline-none",
+            "flex-1 resize-none bg-transparent px-1.5 py-1.5 text-[0.95rem] leading-6 text-foreground outline-none",
             "placeholder:text-muted-foreground",
           )}
         />
@@ -141,7 +140,7 @@ export function ChatInput({
               "grid size-9 shrink-0 place-items-center rounded-full transition",
               canSend
                 ? "bg-primary text-primary-foreground hover:opacity-90"
-                : "bg-foreground/10 text-muted-foreground cursor-not-allowed",
+                : "bg-muted text-muted-foreground cursor-not-allowed",
             )}
           >
             <ArrowUp size={16} />
