@@ -78,6 +78,36 @@ export function splitThinkingFromContent(text: string): ThinkingTagSplit {
   return { reasoning, content };
 }
 
+// Hermes sometimes streams untagged meta-monologue before the user-facing reply.
+function splitHermesUntaggedMonologue(text: string): ThinkingTagSplit {
+  const trimmed = text.trim();
+  if (!trimmed) return { reasoning: "", content: text };
+
+  const blocks = trimmed.split(/\n\n+/);
+  if (blocks.length < 2) return { reasoning: "", content: text };
+
+  const last = blocks[blocks.length - 1]!.trim();
+  const earlier = blocks.slice(0, -1).join("\n\n").trim();
+  if (!earlier || earlier.length < 80) return { reasoning: "", content: text };
+
+  if (
+    last.length <= Math.max(400, earlier.length * 0.75) &&
+    /^(hello|hi|hey|sure|of course|i'd|i would|the answer|here's|here is|to answer|in summary|so,)/i.test(
+      last,
+    )
+  ) {
+    return { reasoning: earlier, content: last };
+  }
+
+  return { reasoning: "", content: text };
+}
+
+export function finalizeHermesAssistantOutput(text: string): ThinkingTagSplit {
+  const tagged = splitThinkingFromContent(text);
+  if (tagged.reasoning) return tagged;
+  return splitHermesUntaggedMonologue(text);
+}
+
 // Splits Hermes / DeepHermes thinking tags that some models stream inside `content`.
 export function createThinkingTagSplitter() {
   let carry = "";

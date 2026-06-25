@@ -27,7 +27,7 @@ export type OpenRouterReasoning = {
   enabled?: boolean;
 };
 
-function isHermesReasoningModel(model?: string): boolean {
+export function isHermesReasoningModel(model?: string): boolean {
   return /hermes[-/]?4/i.test(model ?? "");
 }
 
@@ -54,13 +54,23 @@ export function buildOpenRouterReasoning(
   return reasoning;
 }
 
+// Nous Hermes 4 reasoning-mode system prompt (HF model card). Required on Nebius
+// when reasoning.enabled alone still streams untagged monologue in delta.content.
 export function hermesReasoningSystemDirective(model?: string): string | undefined {
   if (!isHermesReasoningModel(model)) return undefined;
   return [
-    "When you reason before answering, enclose your internal monologue inside",
-    "\x3cthink\x3e...\x3c/think\x3e or <think>...</think> tags.",
-    "Write only the final user-facing reply outside those tags.",
+    "You are a deep thinking AI.",
+    "Use long chains of thought to consider the problem before answering.",
+    "Enclose your thoughts and internal monologue inside",
+    "<think>...</think> or \x3cthink\x3e...\x3c/think\x3e tags,",
+    "then provide your solution or response outside those tags.",
   ].join(" ");
+}
+
+export function shouldIncludeReasoningInRequest(
+  settings?: ReasoningSettings,
+): boolean {
+  return Boolean(settings?.enabled && settings.showInResponse);
 }
 
 export function shouldStreamReasoning(settings?: ReasoningSettings): boolean {

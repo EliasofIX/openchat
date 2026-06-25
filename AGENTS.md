@@ -82,7 +82,7 @@ There is **no SSE framing, no JSON envelope protocol, no SDK** between model and
 
 To swap providers, edit the route (or `ai-completion.ts`), keep the same `ReadableStream` / NDJSON pattern on the wire.
 
-- **OpenRouter reasoning:** send `reasoning.enabled: true` (not just `effort`) — required for boolean-only models like Hermes 4. Nebius-hosted Hermes 4 ignores `effort`; also send legacy `include_reasoning: true`. Inject the Hermes ` tags directive into the system prompt when reasoning is on. Use NDJSON whenever reasoning is enabled; gate what the client sees with `showInResponse`, not the stream format. Split `` / `<think>` blocks from `content` in `reasoning.ts` when providers embed them there.
+- **OpenRouter reasoning:** send `reasoning.enabled: true` (not just `effort`) — required for boolean-only models like Hermes 4. Nebius-hosted Hermes 4 ignores `effort`; only send legacy `include_reasoning: true` when `showInResponse` is on (it conflicts with `reasoning.exclude`). Inject the Nous Hermes reasoning-mode system prompt whenever reasoning is enabled — not only when visible. Use NDJSON whenever reasoning is enabled; gate what the client sees with `showInResponse`, not the stream format. Split `` / `<think>` blocks from `content` in `reasoning.ts`; Hermes on Nebius may still stream untagged monologue in `content` — route that to reasoning during the stream and run `finalizeHermesAssistantOutput()` at flush/end to peel off the closing reply paragraph.
 
 ### Persistence
 

@@ -13,12 +13,15 @@ import {
 import {
   buildOpenRouterReasoning,
   hermesReasoningSystemDirective,
+  isHermesReasoningModel,
+  shouldIncludeReasoningInRequest,
   shouldStreamReasoning,
 } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
 import {
   createThinkingTagSplitter,
   extractReasoningText,
+  finalizeHermesAssistantOutput,
   splitThinkingFromContent,
 } from "@/lib/reasoning";
 import type { ModelProvider, ReasoningSettings } from "@/lib/types";
@@ -72,7 +75,7 @@ function withReasoningSystemPrompt(
   model: string,
   reasoning?: ReasoningSettings,
 ): ChatMessage[] {
-  if (!reasoning?.enabled || !reasoning.showInResponse) return messages;
+  if (!reasoning?.enabled) return messages;
 
   const directive = hermesReasoningSystemDirective(model);
   if (!directive) return messages;
@@ -205,7 +208,12 @@ export async function POST(req: Request) {
         model: resolvedModel,
         messages: upstreamMessages,
         ...(reasoningParam
-          ? { reasoning: reasoningParam, include_reasoning: true }
+          ? {
+              reasoning: reasoningParam,
+              ...(shouldIncludeReasoningInRequest(reasoning)
+                ? { include_reasoning: true }
+                : {}),
+            }
           : {}),
       });
     } catch (err) {
@@ -217,6 +225,11 @@ export async function POST(req: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const tagSplitter = streamReasoning ? createThinkingTagSplitter() : null;
+      let hermesUntaggedMode = Boolean(
+        streamReasoning &&
+          reasoning?.enabled &&
+          isHermesReasoningModel(resolvedModel),
+      );
 
       try {
         for await (const chunk of upstream) {
@@ -235,6 +248,22 @@ export async function POST(req: Request) {
             if (split.reasoning) {
               reasoningText = split.reasoning;
               contentText = split.content;
+            }
+          }
+
+          if (hermesUntaggedMode) {
+            if (reasoningText) {
+              hermesUntaggedMode = false;
+            } else if (contentText) {
+              const hasTags =
+                contentText.includes("<think>") ||
+                contentText.includes("\x3cthink\x3e");
+              if (hasTags) {
+                hermesUntaggedMode = false;
+              } else {
+                reasoningText = contentText;
+                contentText = "";
+              }
             }
           }
 
@@ -257,6 +286,13 @@ export async function POST(req: Request) {
             const split = splitTaggedContent(tailContent, true);
             tailReasoning = split.reasoning;
             tailContent = split.content;
+          }
+
+          if (hermesUntaggedMode && !tailReasoning && tailContent) {
+            const split = finalizeHermesAssistantOutput(tailContent);
+            tailReasoning = split.reasoning;
+            tailContent = split.content;
+            hermesUntaggedMode = false;
           }
 
           if (tailReasoning && showReasoningInStream) {
