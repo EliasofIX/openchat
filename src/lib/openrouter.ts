@@ -63,12 +63,6 @@ export function hermesReasoningSystemDirective(model?: string): string | undefin
   ].join(" ");
 }
 
-export function shouldIncludeReasoningInRequest(
-  settings?: ReasoningSettings,
-): boolean {
-  return Boolean(settings?.enabled && settings.showInResponse);
-}
-
 export function shouldStreamReasoning(settings?: ReasoningSettings): boolean {
   return Boolean(settings?.enabled);
 }

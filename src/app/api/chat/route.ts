@@ -13,7 +13,6 @@ import {
 import {
   buildOpenRouterReasoning,
   hermesReasoningSystemDirective,
-  shouldIncludeReasoningInRequest,
   shouldStreamReasoning,
 } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
@@ -63,6 +62,13 @@ function extractDeltaReasoning(delta: ChatCompletionDelta | undefined | null): s
   if (!delta) return "";
   if (delta.thinking) return delta.thinking;
   return extractReasoningText(delta);
+}
+
+function hasDedicatedReasoning(delta: ChatCompletionDelta | undefined | null): boolean {
+  if (!delta) return false;
+  if (delta.thinking) return true;
+  if (delta.reasoning || delta.reasoning_content) return true;
+  return Boolean(delta.reasoning_details?.length);
 }
 
 function resolveProvider(value?: string): ModelProvider {
@@ -198,14 +204,7 @@ export async function POST(req: Request) {
       upstream = client.stream({
         model: resolvedModel,
         messages: upstreamMessages,
-        ...(reasoningParam
-          ? {
-              reasoning: reasoningParam,
-              ...(shouldIncludeReasoningInRequest(reasoning)
-                ? { include_reasoning: true }
-                : {}),
-            }
-          : {}),
+        ...(reasoningParam ? { reasoning: reasoningParam } : {}),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown upstream error.";
@@ -225,7 +224,7 @@ export async function POST(req: Request) {
           let reasoningText = extractDeltaReasoning(delta);
           let contentText = delta?.content ?? "";
 
-          if (reasoningText) sawDedicatedReasoning = true;
+          if (hasDedicatedReasoning(delta)) sawDedicatedReasoning = true;
 
           if (tagSplitter && contentText) {
             const split = tagSplitter.push(contentText);

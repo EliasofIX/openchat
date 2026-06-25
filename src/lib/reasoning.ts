@@ -99,9 +99,10 @@ export function createPlainReasoningSplitter() {
   let inContent = false;
 
   const holdPartialDelimiter = (text: string): { emit: string; hold: string } => {
-    for (let len = Math.min(text.length, 1); len >= 1; len--) {
+    const delimiter = "\n\n";
+    for (let len = Math.min(text.length, delimiter.length - 1); len >= 1; len--) {
       const suffix = text.slice(-len);
-      if ("\n\n".startsWith(suffix)) {
+      if (delimiter.startsWith(suffix)) {
         return { emit: text.slice(0, -len), hold: suffix };
       }
     }
