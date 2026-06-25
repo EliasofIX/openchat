@@ -49,6 +49,7 @@ export function onStorageError(listener: (error: StorageError | null) => void): 
 export const DEFAULT_SETTINGS: UserSettings = {
   name: "",
   customInstructions: "",
+  colorAccent: null,
   provider: "openrouter",
   openRouterApiKey: "",
   model: "",
@@ -103,6 +104,7 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
+    colorAccent: stored.colorAccent ?? DEFAULT_SETTINGS.colorAccent,
     provider,
     ollamaBaseUrl: stored.ollamaBaseUrl ?? DEFAULT_SETTINGS.ollamaBaseUrl,
     ollamaModel: stored.ollamaModel ?? DEFAULT_SETTINGS.ollamaModel,

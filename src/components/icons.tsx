@@ -164,6 +164,18 @@ export function Loader2({ size, className }: IconProps) {
   );
 }
 
+export function Palette({ size, className }: IconProps) {
+  return (
+    <Icon size={size} className={className}>
+      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+      <path d="M12 2a10 10 0 1 0 10 10c0-2.5-2-4-4-4h-1.5a1.5 1.5 0 0 1-1.4-2.1A10 10 0 0 0 12 2Z" />
+    </Icon>
+  );
+}
+
 export function Menu({ size, className }: IconProps) {
   return (
     <Icon size={size} className={className}>

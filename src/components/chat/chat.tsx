@@ -14,6 +14,7 @@ import { useAttachments } from "@/hooks/use-attachments";
 import { useContextUsage } from "@/hooks/use-context-usage";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
+import { useColorAccent } from "@/hooks/use-color-accent";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
 import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
@@ -29,6 +30,7 @@ const SettingsDialog = dynamic(
 export function Chat() {
   const conv = useConversations();
   const settingsHook = useSettings();
+  useColorAccent(settingsHook.settings.colorAccent, settingsHook.hydrated);
   const systemPrompt = buildSystemPrompt(settingsHook.settings);
   const settingsRef = useRef(settingsHook.settings);
   const convRef = useRef(conv);
@@ -195,13 +197,17 @@ export function Chat() {
         </div>
       )}
 
-      <header className="absolute left-0 top-0 z-10 flex items-center gap-1 p-2">
-        <IconButton onClick={() => setSidebarOpen(true)} label="Open conversations">
-          <Menu size={18} />
-        </IconButton>
-        <IconButton onClick={newChat} label="New chat">
-          <SquarePen size={17} />
-        </IconButton>
+      <header className="electron-header absolute inset-x-0 top-0 z-10 flex items-center">
+        <div className="electron-traffic-spacer" aria-hidden />
+        <div className="electron-no-drag flex items-center gap-0.5">
+          <IconButton onClick={() => setSidebarOpen(true)} label="Open conversations" compact>
+            <Menu size={18} />
+          </IconButton>
+          <IconButton onClick={newChat} label="New chat" compact>
+            <SquarePen size={17} />
+          </IconButton>
+        </div>
+        <div className="electron-chrome-drag flex-1 self-stretch" aria-hidden="true" />
       </header>
 
       <main className="h-full overflow-y-auto">
@@ -343,10 +349,12 @@ function IconButton({
   children,
   label,
   onClick,
+  compact = false,
 }: {
   children: React.ReactNode;
   label: string;
   onClick: () => void;
+  compact?: boolean;
 }) {
   return (
     <button
@@ -355,7 +363,8 @@ function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        "grid size-9 place-items-center rounded-lg text-muted-foreground transition",
+        "grid place-items-center rounded-lg text-muted-foreground transition",
+        compact ? "size-8" : "size-9",
         "hover:bg-muted hover:text-foreground",
       )}
     >
@@ -369,7 +378,9 @@ function EmptyState({ name }: { name: string }) {
   return (
     <div className="flex h-full items-center justify-center px-6">
       <div className="text-center">
-        <h1 className="text-2xl font-medium tracking-tight">{greeting}</h1>
+        <h1 className="text-2xl font-medium tracking-tight [html.has-color-accent_&]:text-primary">
+          {greeting}
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">What would you like to talk about?</p>
       </div>
     </div>

@@ -108,15 +108,12 @@ function AssistantMessage({
         />
       )}
 
-      {hasContent &&
-        (isStreaming ? (
-          <div className="whitespace-pre-wrap break-words text-[0.95rem] leading-7 text-foreground">
-            {message.content}
-            <StreamingCursor />
-          </div>
-        ) : (
+      {hasContent && (
+        <>
           <Markdown content={message.content} />
-        ))}
+          {isStreaming && <StreamingCursor />}
+        </>
+      )}
 
       {!hasContent && !hasReasoning && isStreaming && <StreamingCursor />}
 
