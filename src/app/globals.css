@@ -160,6 +160,40 @@
   contain-intrinsic-size: auto 120px;
 }
 
+/* Electron frameless chrome — web keeps the plain header; macOS insets live under
+   html.electron-macos so a wiped inline var still leaves room for traffic lights. */
+.electron-header {
+  padding: 0.5rem;
+  height: auto;
+}
+
+.electron-traffic-spacer {
+  width: 0;
+  flex-shrink: 0;
+}
+
+html.electron-macos .electron-header {
+  padding: var(--electron-header-padding, 0 0.75rem 0 0);
+  height: var(--electron-chrome-h, 52px);
+  -webkit-app-region: var(--electron-app-region, drag);
+}
+
+html.electron-macos .electron-traffic-spacer {
+  width: var(--electron-safe-left, 108px);
+}
+
+html.electron-macos .electron-no-drag {
+  -webkit-app-region: var(--electron-no-drag-region, no-drag);
+}
+
+html.electron-macos .electron-chrome-drag {
+  min-height: var(--electron-chrome-h, 52px);
+}
+
+html.electron-macos .electron-sidebar {
+  padding-top: var(--electron-chrome-h, 52px);
+}
+
 /* Desktop low-power mode: the Electron shell toggles `.low-power` on <html>
    (on battery, hidden, or minimized — see electron/preload.js). Drop the
    GPU-expensive glass blur to save power; restored on AC / when visible. */

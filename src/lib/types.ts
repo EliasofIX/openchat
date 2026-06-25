@@ -65,6 +65,8 @@ export type TitleGenerationSettings = {
 export type UserSettings = {
   name: string;
   customInstructions: string;
+  /** oklch CSS color string, or null for the default neutral palette. */
+  colorAccent: string | null;
   provider: ModelProvider;
   openRouterApiKey: string;
   model: string;

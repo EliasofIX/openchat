@@ -91,10 +91,12 @@ try {
 }
 console.log("\nLaunching Electron…\n");
 
-electronProcess = run("npx", ["electron", "."], {
-  ...process.env,
-  ELECTRON_DEV: "1",
-});
+// Cursor (and other Electron hosts) set ELECTRON_RUN_AS_NODE in the shell env,
+// which makes a child Electron binary run as plain Node — no window, instant exit.
+const electronEnv = { ...process.env, ELECTRON_DEV: "1" };
+delete electronEnv.ELECTRON_RUN_AS_NODE;
+
+electronProcess = run("npx", ["electron", "."], electronEnv);
 
 // Without this an Electron launch failure emits "error" (never "exit"), leaving
 // the dev server running and this script hanging forever.

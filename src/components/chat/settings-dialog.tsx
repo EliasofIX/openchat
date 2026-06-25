@@ -1,14 +1,16 @@
 "use client";
 
-import { Brain, User, X } from "@/components/icons";
-import { useEffect, useState } from "react";
+import { Brain, Palette, User, X } from "@/components/icons";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogPanel } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { applyColorAccent } from "@/lib/color-accent";
 import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
 import type { ReasoningEffort, TitleGenerationSettings, UserSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ColorAccentPicker } from "./color-accent-picker";
 import { ProvidersSettings } from "./providers-settings";
 import { TitleSettings } from "./title-settings";
 import {
@@ -50,6 +52,8 @@ export function SettingsDialog({
   const [titleGeneration, setTitleGeneration] = useState<TitleGenerationSettings>(
     settings.titleGeneration,
   );
+  const [colorAccent, setColorAccent] = useState<string | null>(settings.colorAccent);
+  const previewAccentRef = useRef<string | null>(settings.colorAccent);
 
   useEffect(() => {
     if (open) {
@@ -66,13 +70,26 @@ export function SettingsDialog({
       setShowReasoning(settings.reasoning.showInResponse);
       setCollapseReasoning(settings.reasoning.collapseByDefault);
       setTitleGeneration(settings.titleGeneration);
+      setColorAccent(settings.colorAccent);
+      previewAccentRef.current = settings.colorAccent;
     }
   }, [open, settings, initialTab]);
+
+  const previewAccent = (next: string | null) => {
+    setColorAccent(next);
+    applyColorAccent(next);
+  };
+
+  const closeDialog = (restorePreview = true) => {
+    if (restorePreview) applyColorAccent(previewAccentRef.current);
+    onOpenChange(false);
+  };
 
   const save = () => {
     onSave({
       name: name.trim(),
       customInstructions: instructions,
+      colorAccent,
       provider,
       openRouterApiKey: apiKey.trim(),
       model: model.trim(),
@@ -86,11 +103,12 @@ export function SettingsDialog({
       },
       titleGeneration,
     });
+    previewAccentRef.current = colorAccent;
     onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : closeDialog())}>
       <DialogPanel>
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0 pr-2">
@@ -111,7 +129,7 @@ export function SettingsDialog({
           <button
             type="button"
             aria-label="Close"
-            onClick={() => onOpenChange(false)}
+            onClick={() => closeDialog()}
             className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             <X size={16} />
@@ -146,6 +164,16 @@ export function SettingsDialog({
                     )}
                   />
                 </SettingsField>
+              </SettingsSection>
+
+              <Separator />
+
+              <SettingsSection
+                icon={Palette}
+                title="Color accents"
+                description="Tint buttons, focus rings, and highlights with a personal accent color."
+              >
+                <ColorAccentPicker value={colorAccent} onChange={previewAccent} />
               </SettingsSection>
 
               <Separator />
@@ -223,7 +251,7 @@ export function SettingsDialog({
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card px-5 py-4 sm:px-6">
           <button
             type="button"
-            onClick={() => onOpenChange(false)}
+            onClick={() => closeDialog()}
             className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             Cancel

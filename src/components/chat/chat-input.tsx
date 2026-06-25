@@ -77,6 +77,7 @@ export function ChatInput({
             "transition-colors duration-200",
             "focus-within:border-black/10 focus-within:bg-white/65",
             "dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.09]",
+            "[html.has-color-accent_&]:focus-within:border-[var(--user-accent-border)]",
           ),
         )}
       >
@@ -127,7 +128,7 @@ export function ChatInput({
             type="button"
             onClick={onStop}
             aria-label="Stop generating"
-            className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground text-background transition hover:opacity-90"
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90"
           >
             <Square size={14} fill="currentColor" />
           </button>
@@ -139,7 +140,7 @@ export function ChatInput({
             className={cn(
               "grid size-9 shrink-0 place-items-center rounded-full transition",
               canSend
-                ? "bg-foreground text-background hover:opacity-90"
+                ? "bg-primary text-primary-foreground hover:opacity-90"
                 : "bg-foreground/10 text-muted-foreground cursor-not-allowed",
             )}
           >

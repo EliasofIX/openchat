@@ -143,6 +143,26 @@ async function startStandaloneServerWithRetry() {
   }
 }
 
+// macOS hidden title bar: measure traffic-light origin and tell the renderer how
+// much left inset the toolbar needs. Inline CSS vars survive Next.js hydration.
+const TRAFFIC_LIGHT_CLUSTER_W = 78;
+const GAP_AFTER_TRAFFIC_LIGHTS = 16;
+const MAC_CHROME_HEIGHT = 52;
+
+function sendShellChrome(win) {
+  if (process.platform !== "darwin" || !win || win.isDestroyed() || win.webContents.isDestroyed()) {
+    return;
+  }
+  let safeLeft = 108;
+  try {
+    const pos = win.getWindowButtonPosition();
+    if (pos) safeLeft = pos.x + TRAFFIC_LIGHT_CLUSTER_W + GAP_AFTER_TRAFFIC_LIGHTS;
+  } catch {
+    // Fall back to the default inset.
+  }
+  win.webContents.send("shell-chrome", { safeLeft, chromeHeight: MAC_CHROME_HEIGHT });
+}
+
 async function createWindow() {
   // Guard against overlapping creation: `activate` (dock click) can fire while
   // the first window is still awaiting the server, which would spawn a second
@@ -165,6 +185,15 @@ async function createWindow() {
       minHeight: 360,
       title: "Open Chat",
       show: false,
+      // macOS: overlay traffic lights on the page instead of a separate title bar.
+      ...(process.platform === "darwin"
+        ? {
+            titleBarStyle: "hiddenInset",
+            trafficLightPosition: { x: 16, y: 18 },
+          }
+        : {}),
+      // macOS: first click on an unfocused window should hit the button, not only focus.
+      acceptFirstMouse: true,
       webPreferences: {
         preload: join(__dirname, "preload.js"),
         contextIsolation: true,
@@ -177,7 +206,10 @@ async function createWindow() {
     mainWindow.loadURL(url).catch((err) => {
       if (process.env.ELECTRON_DEBUG) console.error("[electron] loadURL failed:", err);
     });
-    mainWindow.once("ready-to-show", () => mainWindow?.show());
+    mainWindow.once("ready-to-show", () => {
+      sendShellChrome(mainWindow);
+      mainWindow?.show();
+    });
 
     mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
       if (target.startsWith("http://") || target.startsWith("https://")) {
@@ -250,6 +282,9 @@ async function createWindow() {
     // fresh document has no `.low-power` class, so clear the cache to force a
     // send even when the value matches what the previous page already had.
     mainWindow.webContents.on("did-finish-load", () => {
+      sendShellChrome(mainWindow);
+      // Re-measure after React hydration — it can wipe inline <html> styles set by preload.
+      setTimeout(() => sendShellChrome(mainWindow), 150);
       lastLowPower = null;
       refreshPowerMode();
     });

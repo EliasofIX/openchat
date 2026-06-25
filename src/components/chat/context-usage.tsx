@@ -13,7 +13,7 @@ function barColor(percent: number | null): string {
   if (percent == null) return "bg-muted-foreground/40";
   if (percent >= 90) return "bg-destructive";
   if (percent >= 70) return "bg-amber-500";
-  return "bg-muted-foreground/50";
+  return "bg-muted-foreground/50 [html.has-color-accent_&]:bg-primary";
 }
 
 function buildTooltip(usage: ContextUsageState): string {

@@ -38,7 +38,7 @@ export function Sidebar({
       <aside
         className={cn(
           glassSurface(
-            "oc-animate-slide-in-left fixed left-0 top-0 z-40 flex h-dvh w-[min(86vw,300px)] flex-col",
+            "electron-sidebar oc-animate-slide-in-left fixed left-0 top-0 z-40 flex h-dvh w-[min(86vw,300px)] flex-col",
             "border-y-0 border-l-0 border-r text-sidebar-foreground outline-none",
           ),
         )}
@@ -73,7 +73,7 @@ export function Sidebar({
                     className={cn(
                       "block w-full truncate rounded-md px-2.5 py-2 pr-8 text-left text-sm transition",
                       c.id === activeId
-                        ? "bg-black/[0.06] text-foreground dark:bg-white/[0.1]"
+                        ? "bg-black/[0.06] text-foreground dark:bg-white/[0.1] [html.has-color-accent_&]:bg-[var(--user-accent-soft)] [html.has-color-accent_&]:text-primary"
                         : "text-sidebar-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.06]",
                     )}
                     title={c.title}
