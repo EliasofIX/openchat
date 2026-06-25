@@ -27,8 +27,13 @@ export type OpenRouterReasoning = {
   enabled?: boolean;
 };
 
+function isHermesReasoningModel(model?: string): boolean {
+  return /hermes[-/]?4/i.test(model ?? "");
+}
+
 export function buildOpenRouterReasoning(
   settings?: ReasoningSettings,
+  model?: string,
 ): OpenRouterReasoning | undefined {
   if (!settings?.enabled) return undefined;
 
@@ -36,11 +41,26 @@ export function buildOpenRouterReasoning(
     return { enabled: false, effort: "none" };
   }
 
-  return {
+  const reasoning: OpenRouterReasoning = {
     enabled: true,
-    effort: settings.effort,
     exclude: !settings.showInResponse,
   };
+
+  // Nebius-hosted Hermes 4 only documents reasoning.enabled — effort is ignored.
+  if (!isHermesReasoningModel(model)) {
+    reasoning.effort = settings.effort;
+  }
+
+  return reasoning;
+}
+
+export function hermesReasoningSystemDirective(model?: string): string | undefined {
+  if (!isHermesReasoningModel(model)) return undefined;
+  return [
+    "When you reason before answering, enclose your internal monologue inside",
+    "\x3cthink\x3e...\x3c/think\x3e or <think>...</think> tags.",
+    "Write only the final user-facing reply outside those tags.",
+  ].join(" ");
 }
 
 export function shouldStreamReasoning(settings?: ReasoningSettings): boolean {

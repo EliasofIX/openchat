@@ -14,7 +14,7 @@ type ReasoningDelta = {
 };
 
 const THINKING_TAG_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ["<think>", "</think>"],
+  ["\x3cthink\x3e", "\x3c/think\x3e"],
   ["<think>", "</think>"],
 ];
 
@@ -35,6 +35,9 @@ function decodeOpenRouterReasoningData(data: string): string {
 function extractDetailText(entry: ReasoningDetail): string {
   if (entry.type === "reasoning.text" && entry.text) return entry.text;
   if (entry.type === "reasoning.summary" && entry.summary) return entry.summary;
+  if (entry.type === "redacted_thinking" && entry.data) {
+    return decodeOpenRouterReasoningData(entry.data);
+  }
   if (entry.text) return entry.text;
   if (entry.summary) return entry.summary;
   if (entry.data) return decodeOpenRouterReasoningData(entry.data);
@@ -54,6 +57,26 @@ export function extractReasoningText(delta: ReasoningDelta | undefined | null): 
 }
 
 export type ThinkingTagSplit = { reasoning: string; content: string };
+
+// Pulls tagged thinking blocks out of a complete assistant string (Hermes 4, DeepHermes, …).
+export function splitThinkingFromContent(text: string): ThinkingTagSplit {
+  let reasoning = "";
+  let content = text;
+
+  for (const [open, close] of THINKING_TAG_PAIRS) {
+    let safety = 0;
+    while (safety++ < 32) {
+      const start = content.indexOf(open);
+      if (start === -1) break;
+      const end = content.indexOf(close, start + open.length);
+      if (end === -1) break;
+      reasoning += content.slice(start + open.length, end);
+      content = content.slice(0, start) + content.slice(end + close.length);
+    }
+  }
+
+  return { reasoning, content };
+}
 
 // Splits Hermes / DeepHermes thinking tags that some models stream inside `content`.
 export function createThinkingTagSplitter() {

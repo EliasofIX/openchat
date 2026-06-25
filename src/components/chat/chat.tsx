@@ -269,6 +269,9 @@ export function Chat() {
               >
                 <Brain size={11} className="text-violet-500" />
                 Reasoning
+                {!settingsHook.settings.reasoning.showInResponse && (
+                  <span className="text-muted-foreground/70">(hidden)</span>
+                )}
                 <span className="text-muted-foreground/70">·</span>
                 {REASONING_EFFORT_LABELS[settingsHook.settings.reasoning.effort]}
               </span>

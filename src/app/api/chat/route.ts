@@ -12,12 +12,14 @@ import {
 } from "@/lib/ai-client";
 import {
   buildOpenRouterReasoning,
+  hermesReasoningSystemDirective,
   shouldStreamReasoning,
 } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
 import {
   createThinkingTagSplitter,
   extractReasoningText,
+  splitThinkingFromContent,
 } from "@/lib/reasoning";
 import type { ModelProvider, ReasoningSettings } from "@/lib/types";
 
@@ -65,6 +67,42 @@ function resolveProvider(value?: string): ModelProvider {
   return value === "ollama" ? "ollama" : "openrouter";
 }
 
+function withReasoningSystemPrompt(
+  messages: ChatMessage[],
+  model: string,
+  reasoning?: ReasoningSettings,
+): ChatMessage[] {
+  if (!reasoning?.enabled || !reasoning.showInResponse) return messages;
+
+  const directive = hermesReasoningSystemDirective(model);
+  if (!directive) return messages;
+
+  const systemIdx = messages.findIndex((m) => m.role === "system");
+  if (systemIdx >= 0) {
+    const existing = messages[systemIdx];
+    const content =
+      typeof existing.content === "string" ? existing.content.trim() : "";
+    return messages.map((m, i) =>
+      i === systemIdx
+        ? {
+            ...m,
+            content: content ? `${content}\n\n${directive}` : directive,
+          }
+        : m,
+    );
+  }
+
+  return [{ role: "system", content: directive }, ...messages];
+}
+
+function splitTaggedContent(
+  text: string,
+  reasoningEnabled: boolean,
+): { reasoning: string; content: string } {
+  if (!reasoningEnabled || !text) return { reasoning: "", content: text };
+  return splitThinkingFromContent(text);
+}
+
 function createOpenRouterClient(apiKey: string) {
   return createAiClient({
     apiKey,
@@ -110,6 +148,17 @@ export async function POST(req: Request) {
     ? [{ role: "system", content: systemPrompt }, ...messages]
     : messages;
 
+  const resolvedModel =
+    provider === "ollama"
+      ? model?.trim() || DEFAULT_OLLAMA_MODEL
+      : model?.trim() || DEFAULT_MODEL;
+
+  const upstreamMessages = withReasoningSystemPrompt(
+    fullMessages,
+    resolvedModel,
+    reasoning,
+  );
+
   const streamReasoning = shouldStreamReasoning(reasoning);
   const showReasoningInStream = Boolean(reasoning?.showInResponse);
   let upstream: AsyncGenerator<import("@/lib/ai-client").ChatCompletionChunk>;
@@ -118,7 +167,6 @@ export async function POST(req: Request) {
     const baseUrl = normalizeOllamaBaseUrl(
       ollamaBaseUrl?.trim() || process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL,
     );
-    const resolvedModel = model?.trim() || DEFAULT_OLLAMA_MODEL;
 
     if (!resolvedModel) {
       return new Response(
@@ -132,7 +180,7 @@ export async function POST(req: Request) {
     try {
       upstream = client.stream({
         model: resolvedModel,
-        messages: fullMessages,
+        messages: upstreamMessages,
         ...(reasoning?.enabled ? { think: true } : {}),
       });
     } catch (err) {
@@ -150,13 +198,15 @@ export async function POST(req: Request) {
     }
 
     const client = createOpenRouterClient(resolvedKey);
-    const reasoningParam = buildOpenRouterReasoning(reasoning);
+    const reasoningParam = buildOpenRouterReasoning(reasoning, resolvedModel);
 
     try {
       upstream = client.stream({
-        model: model?.trim() || DEFAULT_MODEL,
-        messages: fullMessages,
-        ...(reasoningParam ? { reasoning: reasoningParam } : {}),
+        model: resolvedModel,
+        messages: upstreamMessages,
+        ...(reasoningParam
+          ? { reasoning: reasoningParam, include_reasoning: true }
+          : {}),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown upstream error.";
@@ -180,6 +230,14 @@ export async function POST(req: Request) {
             contentText = split.content;
           }
 
+          if (!reasoningText && contentText && showReasoningInStream) {
+            const split = splitTaggedContent(contentText, true);
+            if (split.reasoning) {
+              reasoningText = split.reasoning;
+              contentText = split.content;
+            }
+          }
+
           if (streamReasoning) {
             if (reasoningText && showReasoningInStream) {
               controller.enqueue(encodePart("reasoning", reasoningText));
@@ -192,10 +250,19 @@ export async function POST(req: Request) {
 
         if (tagSplitter) {
           const tail = tagSplitter.flush();
-          if (tail.reasoning && showReasoningInStream) {
-            controller.enqueue(encodePart("reasoning", tail.reasoning));
+          let tailReasoning = tail.reasoning;
+          let tailContent = tail.content;
+
+          if (!tailReasoning && tailContent && showReasoningInStream) {
+            const split = splitTaggedContent(tailContent, true);
+            tailReasoning = split.reasoning;
+            tailContent = split.content;
           }
-          if (tail.content) controller.enqueue(encodePart("content", tail.content));
+
+          if (tailReasoning && showReasoningInStream) {
+            controller.enqueue(encodePart("reasoning", tailReasoning));
+          }
+          if (tailContent) controller.enqueue(encodePart("content", tailContent));
         }
 
         controller.close();
