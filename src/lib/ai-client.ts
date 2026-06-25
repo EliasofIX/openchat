@@ -44,6 +44,7 @@ export type ChatCompletionRequest = {
   messages: ChatMessage[];
   stream?: boolean;
   reasoning?: unknown;
+  include_reasoning?: boolean;
   think?: boolean;
 };
 
