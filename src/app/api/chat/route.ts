@@ -12,12 +12,15 @@ import {
 } from "@/lib/ai-client";
 import {
   buildOpenRouterReasoning,
+  hermesReasoningSystemDirective,
   shouldStreamReasoning,
 } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
 import {
+  createPlainReasoningSplitter,
   createThinkingTagSplitter,
   extractReasoningText,
+  splitPlainReasoningFromContent,
 } from "@/lib/reasoning";
 import type { ModelProvider, ReasoningSettings } from "@/lib/types";
 
@@ -61,8 +64,43 @@ function extractDeltaReasoning(delta: ChatCompletionDelta | undefined | null): s
   return extractReasoningText(delta);
 }
 
+function hasDedicatedReasoning(delta: ChatCompletionDelta | undefined | null): boolean {
+  if (!delta) return false;
+  if (delta.thinking) return true;
+  if (delta.reasoning || delta.reasoning_content) return true;
+  return Boolean(delta.reasoning_details?.length);
+}
+
 function resolveProvider(value?: string): ModelProvider {
   return value === "ollama" ? "ollama" : "openrouter";
+}
+
+function withReasoningSystemPrompt(
+  messages: ChatMessage[],
+  model: string,
+  reasoning?: ReasoningSettings,
+): ChatMessage[] {
+  if (!reasoning?.enabled) return messages;
+
+  const directive = hermesReasoningSystemDirective(model);
+  if (!directive) return messages;
+
+  const systemIdx = messages.findIndex((m) => m.role === "system");
+  if (systemIdx >= 0) {
+    const existing = messages[systemIdx];
+    const content =
+      typeof existing.content === "string" ? existing.content.trim() : "";
+    return messages.map((m, i) =>
+      i === systemIdx
+        ? {
+            ...m,
+            content: content ? `${content}\n\n${directive}` : directive,
+          }
+        : m,
+    );
+  }
+
+  return [{ role: "system", content: directive }, ...messages];
 }
 
 function createOpenRouterClient(apiKey: string) {
@@ -110,6 +148,17 @@ export async function POST(req: Request) {
     ? [{ role: "system", content: systemPrompt }, ...messages]
     : messages;
 
+  const resolvedModel =
+    provider === "ollama"
+      ? model?.trim() || DEFAULT_OLLAMA_MODEL
+      : model?.trim() || DEFAULT_MODEL;
+
+  const upstreamMessages = withReasoningSystemPrompt(
+    fullMessages,
+    resolvedModel,
+    reasoning,
+  );
+
   const streamReasoning = shouldStreamReasoning(reasoning);
   const showReasoningInStream = Boolean(reasoning?.showInResponse);
   let upstream: AsyncGenerator<import("@/lib/ai-client").ChatCompletionChunk>;
@@ -118,7 +167,6 @@ export async function POST(req: Request) {
     const baseUrl = normalizeOllamaBaseUrl(
       ollamaBaseUrl?.trim() || process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL,
     );
-    const resolvedModel = model?.trim() || DEFAULT_OLLAMA_MODEL;
 
     if (!resolvedModel) {
       return new Response(
@@ -132,7 +180,7 @@ export async function POST(req: Request) {
     try {
       upstream = client.stream({
         model: resolvedModel,
-        messages: fullMessages,
+        messages: upstreamMessages,
         ...(reasoning?.enabled ? { think: true } : {}),
       });
     } catch (err) {
@@ -150,12 +198,12 @@ export async function POST(req: Request) {
     }
 
     const client = createOpenRouterClient(resolvedKey);
-    const reasoningParam = buildOpenRouterReasoning(reasoning);
+    const reasoningParam = buildOpenRouterReasoning(reasoning, resolvedModel);
 
     try {
       upstream = client.stream({
-        model: model?.trim() || DEFAULT_MODEL,
-        messages: fullMessages,
+        model: resolvedModel,
+        messages: upstreamMessages,
         ...(reasoningParam ? { reasoning: reasoningParam } : {}),
       });
     } catch (err) {
@@ -167,6 +215,8 @@ export async function POST(req: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const tagSplitter = streamReasoning ? createThinkingTagSplitter() : null;
+      const plainSplitter = streamReasoning ? createPlainReasoningSplitter() : null;
+      let sawDedicatedReasoning = false;
 
       try {
         for await (const chunk of upstream) {
@@ -174,8 +224,16 @@ export async function POST(req: Request) {
           let reasoningText = extractDeltaReasoning(delta);
           let contentText = delta?.content ?? "";
 
+          if (hasDedicatedReasoning(delta)) sawDedicatedReasoning = true;
+
           if (tagSplitter && contentText) {
             const split = tagSplitter.push(contentText);
+            if (split.reasoning) reasoningText += split.reasoning;
+            contentText = split.content;
+          }
+
+          if (plainSplitter && contentText && !sawDedicatedReasoning) {
+            const split = plainSplitter.push(contentText);
             if (split.reasoning) reasoningText += split.reasoning;
             contentText = split.content;
           }
@@ -192,10 +250,29 @@ export async function POST(req: Request) {
 
         if (tagSplitter) {
           const tail = tagSplitter.flush();
-          if (tail.reasoning && showReasoningInStream) {
-            controller.enqueue(encodePart("reasoning", tail.reasoning));
+          let tailReasoning = tail.reasoning;
+          let tailContent = tail.content;
+
+          if (plainSplitter && tailContent && !sawDedicatedReasoning) {
+            const split = plainSplitter.push(tailContent);
+            if (split.reasoning) tailReasoning += split.reasoning;
+            tailContent = split.content;
           }
-          if (tail.content) controller.enqueue(encodePart("content", tail.content));
+
+          if (plainSplitter && !sawDedicatedReasoning) {
+            const plainTail = plainSplitter.flush();
+            if (plainTail.reasoning) tailReasoning += plainTail.reasoning;
+            if (plainTail.content) tailContent += plainTail.content;
+          } else if (!tailReasoning && tailContent) {
+            const split = splitPlainReasoningFromContent(tailContent);
+            tailReasoning = split.reasoning;
+            tailContent = split.content;
+          }
+
+          if (tailReasoning && showReasoningInStream) {
+            controller.enqueue(encodePart("reasoning", tailReasoning));
+          }
+          if (tailContent) controller.enqueue(encodePart("content", tailContent));
         }
 
         controller.close();
