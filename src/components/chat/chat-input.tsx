@@ -73,7 +73,7 @@ export function ChatInput({
         }}
         className={cn(
           glassPill(
-            "relative flex items-end gap-1.5 rounded-full px-2.5 py-2",
+            "relative flex items-end gap-1.5 rounded-[1.75rem] px-2.5 py-2",
             "bg-card transition-colors duration-200",
             "focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25",
             "[html.has-color-accent_&]:focus-within:border-[var(--user-accent-border)]",
