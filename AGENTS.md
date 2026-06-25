@@ -82,6 +82,8 @@ There is **no SSE framing, no JSON envelope protocol, no SDK** between model and
 
 To swap providers, edit the route (or `ai-completion.ts`), keep the same `ReadableStream` / NDJSON pattern on the wire.
 
+- **OpenRouter reasoning:** send `reasoning.enabled: true` (not just `effort`) — required for boolean-only models like Hermes 4. Use NDJSON whenever reasoning is enabled; gate what the client sees with `showInResponse`, not the stream format. Some models embed thinking in `content` inside `` / `<think>` tags — `createThinkingTagSplitter()` in `reasoning.ts` splits those server-side.
+
 ### Persistence
 
 - `src/lib/storage.ts` — per-conversation `localStorage` keys + index; settings/active id

@@ -100,7 +100,7 @@
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --input: oklch(0.32 0 0);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -136,11 +136,11 @@
 }
 
 .prose-chat .katex-display {
-  @apply my-4 overflow-x-auto rounded-lg border border-border/60 bg-muted/30 px-4 py-3;
+  @apply my-4 overflow-x-auto rounded-lg border border-border bg-muted px-4 py-3;
 }
 
 .math-display-block {
-  @apply my-4 overflow-x-auto rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-center;
+  @apply my-4 overflow-x-auto rounded-lg border border-border bg-muted px-4 py-3 text-center;
 }
 
 .math-display-block > .katex-display {

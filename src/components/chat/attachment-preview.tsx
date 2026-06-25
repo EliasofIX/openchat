@@ -37,8 +37,8 @@ function AttachmentChip({
       className={cn(
         "group relative flex max-w-[10rem] items-center gap-2 rounded-xl border px-2 py-1.5 text-xs",
         isUnsupported || isError
-          ? "border-destructive/40 bg-destructive/5"
-          : "border-border bg-muted/40",
+          ? "border-destructive bg-destructive/10"
+          : "border-border bg-muted",
       )}
       title={att.errorMessage ?? att.name}
     >
@@ -61,7 +61,7 @@ function AttachmentChip({
         )}
 
         {isLoading && (
-          <div className="absolute inset-0 grid place-items-center bg-background/60">
+          <div className="absolute inset-0 grid place-items-center bg-muted">
             <Loader2 size={16} className="animate-spin text-foreground" />
           </div>
         )}

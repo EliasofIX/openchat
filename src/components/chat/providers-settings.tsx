@@ -203,7 +203,7 @@ export function ProvidersSettings({
                   value={ollamaModel}
                   onChange={(e) => onOllamaModelChange(e.target.value)}
                   className={cn(
-                    "h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-xs outline-none",
+                    "h-8 min-w-0 flex-1 rounded-lg border border-border bg-muted px-2.5 text-xs text-foreground outline-none",
                     "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                   )}
                 >
@@ -275,8 +275,8 @@ function ProviderCard({
       className={cn(
         "relative rounded-xl border p-3 text-left transition",
         selected
-          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-          : "border-border bg-muted/10 hover:border-foreground/20 hover:bg-muted/20",
+          ? "border-foreground/20 bg-muted ring-1 ring-foreground/10"
+          : "border-border bg-card hover:border-foreground/15 hover:bg-muted",
       )}
     >
       {selected && (
@@ -287,7 +287,7 @@ function ProviderCard({
       <div
         className={cn(
           "mb-2 grid size-8 place-items-center rounded-lg",
-          selected ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+          selected ? "bg-foreground text-background" : "bg-muted text-muted-foreground",
         )}
       >
         <Icon size={15} />

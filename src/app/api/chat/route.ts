@@ -15,7 +15,10 @@ import {
   shouldStreamReasoning,
 } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
-import { extractReasoningText } from "@/lib/reasoning";
+import {
+  createThinkingTagSplitter,
+  extractReasoningText,
+} from "@/lib/reasoning";
 import type { ModelProvider, ReasoningSettings } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -108,6 +111,7 @@ export async function POST(req: Request) {
     : messages;
 
   const streamReasoning = shouldStreamReasoning(reasoning);
+  const showReasoningInStream = Boolean(reasoning?.showInResponse);
   let upstream: AsyncGenerator<import("@/lib/ai-client").ChatCompletionChunk>;
 
   if (provider === "ollama") {
@@ -162,19 +166,38 @@ export async function POST(req: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const tagSplitter = streamReasoning ? createThinkingTagSplitter() : null;
+
       try {
         for await (const chunk of upstream) {
           const delta = chunk.choices[0]?.delta;
-          const reasoningText = extractDeltaReasoning(delta);
-          const contentText = delta?.content;
+          let reasoningText = extractDeltaReasoning(delta);
+          let contentText = delta?.content ?? "";
+
+          if (tagSplitter && contentText) {
+            const split = tagSplitter.push(contentText);
+            if (split.reasoning) reasoningText += split.reasoning;
+            contentText = split.content;
+          }
 
           if (streamReasoning) {
-            if (reasoningText) controller.enqueue(encodePart("reasoning", reasoningText));
+            if (reasoningText && showReasoningInStream) {
+              controller.enqueue(encodePart("reasoning", reasoningText));
+            }
             if (contentText) controller.enqueue(encodePart("content", contentText));
           } else if (contentText) {
             controller.enqueue(new TextEncoder().encode(contentText));
           }
         }
+
+        if (tagSplitter) {
+          const tail = tagSplitter.flush();
+          if (tail.reasoning && showReasoningInStream) {
+            controller.enqueue(encodePart("reasoning", tail.reasoning));
+          }
+          if (tail.content) controller.enqueue(encodePart("content", tail.content));
+        }
+
         controller.close();
       } catch (err) {
         controller.error(err);

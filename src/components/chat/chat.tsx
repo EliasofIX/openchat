@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Brain, Menu, SquarePen } from "@/components/icons";
 import { ChatInput } from "./chat-input";
@@ -15,11 +15,7 @@ import { useContextUsage } from "@/hooks/use-context-usage";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
-import {
-  LOAD_MORE_MESSAGE_STEP,
-  SCROLL_NEAR_BOTTOM_THRESHOLD,
-  VISIBLE_MESSAGE_LIMIT,
-} from "@/lib/constants";
+import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
 import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
@@ -103,8 +99,6 @@ export function Chat() {
   const [visibleCount, setVisibleCount] = useState(VISIBLE_MESSAGE_LIMIT);
   const [storageError, setStorageError] = useState(getStorageError());
 
-  const mainRef = useRef<HTMLElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const lastLoadedId = useRef<string | null>(null);
   const setMessages = chat.setMessages;
 
@@ -126,22 +120,9 @@ export function Chat() {
     }
   }, [conv.hydrated, conv.activeId, conv.conversations, setMessages]);
 
-  const isNearBottom = useCallback(() => {
-    const el = mainRef.current;
-    if (!el) return true;
-    return (
-      el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_NEAR_BOTTOM_THRESHOLD
-    );
-  }, []);
-
   const hiddenCount = Math.max(0, chat.messages.length - visibleCount);
   const visibleMessages =
     hiddenCount > 0 ? chat.messages.slice(-visibleCount) : chat.messages;
-
-  useLayoutEffect(() => {
-    if (!chat.isStreaming && !isNearBottom()) return;
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [chat.messages, chat.isStreaming, isNearBottom]);
 
   const onSubmit = () => {
     const text = input;
@@ -184,10 +165,6 @@ export function Chat() {
           setSidebarOpen(false);
           openSettings("general");
         }}
-        onOpenProviders={() => {
-          setSidebarOpen(false);
-          openSettings("providers");
-        }}
       />
 
       {settingsOpen && (
@@ -227,7 +204,7 @@ export function Chat() {
         </IconButton>
       </header>
 
-      <main ref={mainRef} className="h-full overflow-y-auto">
+      <main className="h-full overflow-y-auto">
         {chat.messages.length === 0 ? (
           <EmptyState name={settingsHook.settings.name} />
         ) : (
@@ -240,7 +217,7 @@ export function Chat() {
                     onClick={() =>
                       setVisibleCount((n) => n + LOAD_MORE_MESSAGE_STEP)
                     }
-                    className="rounded-full border border-border bg-muted/40 px-4 py-1.5 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    className="rounded-full border border-border bg-muted px-4 py-1.5 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground"
                   >
                     Load earlier messages ({hiddenCount} hidden)
                   </button>
@@ -270,25 +247,24 @@ export function Chat() {
                 </div>
               )}
             </div>
-            <div ref={bottomRef} className="h-1" />
           </div>
         )}
       </main>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-7 z-20">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-3 pb-7">
         <div className="pointer-events-auto mx-auto w-full max-w-3xl px-4">
           {settingsHook.settings.reasoning.enabled && (
             <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
               <span
                 className={glassPill(
-                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium text-muted-foreground",
+                  "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
                 )}
               >
                 {PROVIDER_LABELS[settingsHook.settings.provider]}
               </span>
               <span
                 className={glassPill(
-                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium text-muted-foreground",
+                  "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
                 )}
               >
                 <Brain size={11} className="text-violet-500" />
@@ -306,7 +282,7 @@ export function Chat() {
             <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
               <span
                 className={glassPill(
-                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium text-muted-foreground",
+                  "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
                 )}
               >
                 {PROVIDER_LABELS[settingsHook.settings.provider]}

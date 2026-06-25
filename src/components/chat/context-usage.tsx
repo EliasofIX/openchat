@@ -2,7 +2,7 @@
 
 import { formatTokenCount } from "@/lib/estimate-context";
 import type { ContextUsageState } from "@/hooks/use-context-usage";
-import { cn, glassPill } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 type Props = {
   usage: ContextUsageState;
@@ -10,10 +10,10 @@ type Props = {
 };
 
 function barColor(percent: number | null): string {
-  if (percent == null) return "bg-muted-foreground/40";
+  if (percent == null) return "bg-muted-foreground";
   if (percent >= 90) return "bg-destructive";
   if (percent >= 70) return "bg-amber-500";
-  return "bg-muted-foreground/50";
+  return "bg-emerald-500";
 }
 
 function buildTooltip(usage: ContextUsageState): string {
@@ -48,21 +48,22 @@ export function ContextUsage({ usage, loading = false }: Props) {
 
   return (
     <span
-      className={glassPill(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium text-muted-foreground",
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-1",
+        "text-[10px] font-medium text-foreground shadow-sm",
       )}
       title={tooltip}
       aria-label={ariaLabel}
     >
-      <span className="whitespace-nowrap tabular-nums">{label}</span>
+      <span className="whitespace-nowrap tabular-nums text-muted-foreground">{label}</span>
       {hasLimit && !loading && (
         <span
-          className="h-1 w-8 shrink-0 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]"
+          className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-border"
           aria-hidden
         >
           <span
-            className={cn("block h-full rounded-full transition-[width]", barColor(percent))}
-            style={{ width: `${percent ?? 0}%` }}
+            className={cn("block h-full min-w-[2px] rounded-full transition-[width]", barColor(percent))}
+            style={{ width: `${Math.max(percent ?? 0, 2)}%` }}
           />
         </span>
       )}
