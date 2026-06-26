@@ -110,13 +110,7 @@ function AssistantMessage({
 
       {hasContent && (
         <>
-          {isStreaming ? (
-            <div className="whitespace-pre-wrap break-words text-[0.95rem] leading-7 text-foreground">
-              {message.content}
-            </div>
-          ) : (
-            <Markdown content={message.content} />
-          )}
+          <Markdown content={message.content} defer={isStreaming} />
           {isStreaming && <StreamingCursor />}
         </>
       )}

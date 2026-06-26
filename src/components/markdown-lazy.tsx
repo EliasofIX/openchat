@@ -12,6 +12,6 @@ const MarkdownDynamic = dynamic(
   },
 );
 
-export function Markdown({ content }: { content: string }) {
-  return <MarkdownDynamic content={content} />;
+export function Markdown({ content, defer }: { content: string; defer?: boolean }) {
+  return <MarkdownDynamic content={content} defer={defer} />;
 }
