@@ -131,6 +131,7 @@ Core modules use a short banner comment describing responsibilities and constrai
 - Prefer custom hooks in `src/hooks/` over bloated components
 - Use `useRef` for values read inside async/stream callbacks to avoid stale closures
 - Memoize expensive render paths (see `src/components/markdown.tsx`, `message.tsx`)
+- During streaming, pass `defer` to `Markdown` so `useDeferredValue` keeps react-markdown/KaTeX off the hot path; token UI flushes stay RAF-batched in `use-chat.ts`
 - Heavy client chunks (markdown stack, settings dialog) must use `next/dynamic` with `ssr: false`
 - Stream token updates in `use-chat.ts` are RAF-batched; persist conversations only on flush (send start / stream end), not per token
 

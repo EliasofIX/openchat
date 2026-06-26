@@ -6,12 +6,19 @@
 //   • LaTeX via KaTeX — `$…$`, `$$…$$`, `\(...\)`, `\[...\]`, and ```latex fences
 //   • Code blocks with a copy button
 //
-// We memoize on `content` so re-rendering during streaming is cheap even when
-// the parent re-renders for unrelated reasons.
+// Memoize on `content` + `defer`. During streaming, pass `defer` so
+// `useDeferredValue` keeps markdown parsing off the hot path while tokens
+// still arrive RAF-batched from use-chat (~60fps, ~10fps in low-power).
 
 import "katex/dist/katex.min.css";
 
-import { memo, useMemo, useState, type ComponentPropsWithoutRef } from "react";
+import {
+  memo,
+  useDeferredValue,
+  useMemo,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -93,8 +100,11 @@ const MARKDOWN_COMPONENTS = {
   },
 };
 
-function MarkdownInner({ content }: { content: string }) {
-  const processedContent = useMemo(() => preprocessMathMarkdown(content), [content]);
+function MarkdownBody({ content }: { content: string }) {
+  const processedContent = useMemo(
+    () => preprocessMathMarkdown(content),
+    [content],
+  );
 
   return (
     <div
@@ -128,4 +138,15 @@ function MarkdownInner({ content }: { content: string }) {
   );
 }
 
-export const Markdown = memo(MarkdownInner, (prev, next) => prev.content === next.content);
+const MarkdownBodyMemo = memo(MarkdownBody, (prev, next) => prev.content === next.content);
+
+function MarkdownInner({ content, defer = false }: { content: string; defer?: boolean }) {
+  const deferredContent = useDeferredValue(content);
+  const renderContent = defer ? deferredContent : content;
+  return <MarkdownBodyMemo content={renderContent} />;
+}
+
+export const Markdown = memo(
+  MarkdownInner,
+  (prev, next) => prev.content === next.content && prev.defer === next.defer,
+);

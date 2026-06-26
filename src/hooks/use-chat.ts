@@ -144,8 +144,9 @@ export function useChat(options: UseChatOptions = {}) {
     let aborted = false;
     // UI flush scheduling. Normally one render per animation frame (~60fps, smooth).
     // On battery / hidden / blurred, the desktop shell sets `.low-power` on <html>
-    // (see electron/preload.js); there we coalesce to ~10fps so streaming doesn't
-    // re-render — and re-parse the markdown of — the growing message 60×/second.
+    // (see electron/preload.js); there we coalesce to ~10fps. Markdown uses
+    // `useDeferredValue` (see markdown.tsx `defer` prop) so parsing stays off
+    // the hot path even when these UI flushes run.
     let flushTimer: number | null = null;
     let flushIsRaf = false;
 
