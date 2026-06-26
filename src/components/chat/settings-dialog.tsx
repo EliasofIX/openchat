@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Brain, Palette, User, X } from "@/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -11,14 +12,22 @@ import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
 import type { ReasoningEffort, TitleGenerationSettings, UserSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ColorAccentPicker } from "./color-accent-picker";
-import { ProvidersSettings } from "./providers-settings";
-import { TitleSettings } from "./title-settings";
 import {
   SettingsField,
   SettingsSection,
   SettingsTabButton,
   SettingsToggleRow,
 } from "./settings-ui";
+
+const ProvidersSettings = dynamic(
+  () => import("./providers-settings").then((m) => m.ProvidersSettings),
+  { ssr: false },
+);
+
+const TitleSettings = dynamic(
+  () => import("./title-settings").then((m) => m.TitleSettings),
+  { ssr: false },
+);
 
 export type SettingsTab = "general" | "providers";
 

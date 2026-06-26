@@ -3,31 +3,36 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Brain, Menu, SquarePen } from "@/components/icons";
-import { ChatInput } from "./chat-input";
-import { ContextUsage } from "./context-usage";
+import { Menu, SquarePen } from "@/components/icons";
+import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
 import type { SettingsTab } from "./settings-dialog";
-import { Sidebar } from "./sidebar";
 import { useChat } from "@/hooks/use-chat";
 import { useAttachments } from "@/hooks/use-attachments";
-import { useContextUsage } from "@/hooks/use-context-usage";
+import { useLowPower } from "@/hooks/use-low-power";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
 import { useColorAccent } from "@/hooks/use-color-accent";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
 import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
-import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
-import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
+import { getActiveModel } from "@/lib/providers";
 import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
-import { cn, glassPill } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import type { MessageAttachment } from "@/lib/types";
 
 const SettingsDialog = dynamic(
   () => import("./settings-dialog").then((m) => m.SettingsDialog),
   { ssr: false },
 );
 
+const Sidebar = dynamic(
+  () => import("./sidebar").then((m) => m.Sidebar),
+  { ssr: false },
+);
+
 export function Chat() {
+  useLowPower();
+
   const conv = useConversations();
   const settingsHook = useSettings();
   useColorAccent(settingsHook.settings.colorAccent, settingsHook.hydrated);
@@ -77,34 +82,22 @@ export function Chat() {
     modelCapabilities.loading,
   );
 
-  const [input, setInput] = useState("");
-  const contextUsage = useContextUsage({
-    messages: chat.messages,
-    systemPrompt,
-    draftText: input,
-    draftAttachments: attachmentsHook.readyAttachments.map(
-      ({ id, kind, name, mimeType, dataUrl, textContent }) => ({
-        id,
-        kind,
-        name,
-        mimeType,
-        dataUrl,
-        textContent,
-      }),
-    ),
-    contextTokens: modelCapabilities.capabilities.contextTokens,
-  });
-
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarMounted, setSidebarMounted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [visibleCount, setVisibleCount] = useState(VISIBLE_MESSAGE_LIMIT);
   const [storageError, setStorageError] = useState(getStorageError());
+  const [composerReset, setComposerReset] = useState(0);
 
   const lastLoadedId = useRef<string | null>(null);
   const setMessages = chat.setMessages;
 
   useEffect(() => onStorageError(setStorageError), []);
+
+  useEffect(() => {
+    if (sidebarOpen) setSidebarMounted(true);
+  }, [sidebarOpen]);
 
   const openSettings = (tab: SettingsTab = "general") => {
     setSettingsTab(tab);
@@ -126,20 +119,7 @@ export function Chat() {
   const visibleMessages =
     hiddenCount > 0 ? chat.messages.slice(-visibleCount) : chat.messages;
 
-  const onSubmit = () => {
-    const text = input;
-    const files = attachmentsHook.readyAttachments.map(
-      ({ id, kind, name, mimeType, dataUrl, textContent }) => ({
-        id,
-        kind,
-        name,
-        mimeType,
-        dataUrl,
-        textContent,
-      }),
-    );
-    setInput("");
-    attachmentsHook.clear();
+  const onSend = (text: string, files: MessageAttachment[]) => {
     chat.send(text, files);
   };
 
@@ -148,26 +128,28 @@ export function Chat() {
     chat.setMessages([]);
     conv.createNew();
     lastUpsertRef.current = null;
-    setInput("");
     attachmentsHook.clear();
+    setComposerReset((n) => n + 1);
     setSidebarOpen(false);
     setVisibleCount(VISIBLE_MESSAGE_LIMIT);
   };
 
   return (
     <div className="relative h-dvh overflow-hidden bg-background text-foreground">
-      <Sidebar
-        open={sidebarOpen}
-        onOpenChange={setSidebarOpen}
-        conversations={conv.conversations}
-        activeId={conv.activeId}
-        onSelect={(id) => conv.select(id)}
-        onDelete={conv.remove}
-        onOpenSettings={() => {
-          setSidebarOpen(false);
-          openSettings("general");
-        }}
-      />
+      {sidebarMounted && (
+        <Sidebar
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          conversations={conv.conversations}
+          activeId={conv.activeId}
+          onSelect={(id) => conv.select(id)}
+          onDelete={conv.remove}
+          onOpenSettings={() => {
+            setSidebarOpen(false);
+            openSettings("general");
+          }}
+        />
+      )}
 
       {settingsOpen && (
         <SettingsDialog
@@ -257,74 +239,18 @@ export function Chat() {
         )}
       </main>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-3 pb-7">
-        <div className="pointer-events-auto mx-auto w-full max-w-3xl px-4">
-          {settingsHook.settings.reasoning.enabled && (
-            <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
-              <span
-                className={glassPill(
-                  "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
-                )}
-              >
-                {PROVIDER_LABELS[settingsHook.settings.provider]}
-              </span>
-              <span
-                className={glassPill(
-                  "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
-                )}
-              >
-                <Brain size={11} className="text-violet-500" />
-                Reasoning
-                {!settingsHook.settings.reasoning.showInResponse && (
-                  <span className="text-muted-foreground/70">(hidden)</span>
-                )}
-                <span className="text-muted-foreground/70">·</span>
-                {REASONING_EFFORT_LABELS[settingsHook.settings.reasoning.effort]}
-              </span>
-              <ContextUsage
-                usage={contextUsage}
-                loading={modelCapabilities.loading}
-              />
-            </div>
-          )}
-          {!settingsHook.settings.reasoning.enabled && (
-            <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
-              <span
-                className={glassPill(
-                  "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
-                )}
-              >
-                {PROVIDER_LABELS[settingsHook.settings.provider]}
-                {getActiveModel(settingsHook.settings) && (
-                  <>
-                    <span className="text-muted-foreground/70">·</span>
-                    <span className="max-w-[12rem] truncate font-mono">
-                      {getActiveModel(settingsHook.settings)}
-                    </span>
-                  </>
-                )}
-              </span>
-              <ContextUsage
-                usage={contextUsage}
-                loading={modelCapabilities.loading}
-              />
-            </div>
-          )}
-          <ChatInput
-            value={input}
-            onChange={setInput}
-            onSubmit={onSubmit}
-            onStop={chat.stop}
-            isStreaming={chat.isStreaming}
-            attachments={attachmentsHook.attachments}
-            onAddFiles={(files) => void attachmentsHook.addFiles(files)}
-            onRemoveAttachment={attachmentsHook.remove}
-            onPaste={attachmentsHook.handlePaste}
-            isProcessingAttachments={attachmentsHook.isProcessing}
-            hasUnsupportedAttachments={attachmentsHook.hasUnsupported}
-          />
-        </div>
-      </div>
+      <ChatComposer
+        messages={chat.messages}
+        isStreaming={chat.isStreaming}
+        systemPrompt={systemPrompt}
+        contextTokens={modelCapabilities.capabilities.contextTokens}
+        modelCapabilitiesLoading={modelCapabilities.loading}
+        settings={settingsHook.settings}
+        attachmentsHook={attachmentsHook}
+        onSend={onSend}
+        onStop={chat.stop}
+        resetSignal={composerReset}
+      />
 
       <ChatDisclaimer />
     </div>

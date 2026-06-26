@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   canAddMore,
   detectAttachmentKind,
@@ -171,7 +171,10 @@ export function useAttachments(
     [addFiles],
   );
 
-  const readyAttachments = attachments.filter((a) => a.status === "ready");
+  const readyAttachments = useMemo(
+    () => attachments.filter((a) => a.status === "ready"),
+    [attachments],
+  );
   const hasUnsupported = attachments.some((a) => a.status === "unsupported");
   const isProcessing = attachments.some(
     (a) => a.status === "compressing" || a.status === "processing",
