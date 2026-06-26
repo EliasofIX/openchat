@@ -1,0 +1,162 @@
+"use client";
+
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Brain } from "@/components/icons";
+import { ChatInput } from "./chat-input";
+import { ContextUsage } from "./context-usage";
+import { useContextUsage } from "@/hooks/use-context-usage";
+import type { useAttachments } from "@/hooks/use-attachments";
+import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
+import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
+import type { Message, MessageAttachment, UserSettings } from "@/lib/types";
+import { glassPill } from "@/lib/utils";
+
+type AttachmentsHook = ReturnType<typeof useAttachments>;
+
+type Props = {
+  messages: Message[];
+  isStreaming: boolean;
+  systemPrompt?: string;
+  contextTokens: number | null;
+  modelCapabilitiesLoading: boolean;
+  settings: UserSettings;
+  attachmentsHook: AttachmentsHook;
+  onSend: (text: string, files: MessageAttachment[]) => void;
+  onStop: () => void;
+  /** Increment to clear the draft (e.g. new chat). */
+  resetSignal?: number;
+};
+
+function toMessageAttachments(
+  ready: AttachmentsHook["readyAttachments"],
+): MessageAttachment[] {
+  return ready.map(({ id, kind, name, mimeType, dataUrl, textContent }) => ({
+    id,
+    kind,
+    name,
+    mimeType,
+    dataUrl,
+    textContent,
+  }));
+}
+
+export function ChatComposer({
+  messages,
+  isStreaming,
+  systemPrompt,
+  contextTokens,
+  modelCapabilitiesLoading,
+  settings,
+  attachmentsHook,
+  onSend,
+  onStop,
+  resetSignal = 0,
+}: Props) {
+  const [input, setInput] = useState("");
+  const deferredInput = useDeferredValue(input);
+
+  useEffect(() => {
+    setInput("");
+  }, [resetSignal]);
+
+  const draftAttachments = useMemo(
+    () => toMessageAttachments(attachmentsHook.readyAttachments),
+    [attachmentsHook.readyAttachments],
+  );
+
+  const prevStreamingRef = useRef(false);
+  const meterMessagesRef = useRef(messages);
+
+  useEffect(() => {
+    if (isStreaming && !prevStreamingRef.current) {
+      meterMessagesRef.current = messages.map((m, i) =>
+        i === messages.length - 1 && m.role === "assistant" ? { ...m, content: "" } : m,
+      );
+    } else if (!isStreaming) {
+      meterMessagesRef.current = messages;
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [messages, isStreaming]);
+
+  const meterMessages = isStreaming ? meterMessagesRef.current : messages;
+
+  const contextUsage = useContextUsage({
+    messages: meterMessages,
+    systemPrompt,
+    draftText: deferredInput,
+    draftAttachments,
+    contextTokens,
+  });
+
+  const onSubmit = () => {
+    const text = input;
+    const files = toMessageAttachments(attachmentsHook.readyAttachments);
+    setInput("");
+    attachmentsHook.clear();
+    onSend(text, files);
+  };
+
+  const activeModel = getActiveModel(settings);
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-3 pb-7">
+      <div className="pointer-events-auto mx-auto w-full max-w-3xl px-4">
+        {settings.reasoning.enabled ? (
+          <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+            <span
+              className={glassPill(
+                "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
+              )}
+            >
+              {PROVIDER_LABELS[settings.provider]}
+            </span>
+            <span
+              className={glassPill(
+                "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
+              )}
+            >
+              <Brain size={11} className="text-violet-500" />
+              Reasoning
+              {!settings.reasoning.showInResponse && (
+                <span className="text-muted-foreground/70">(hidden)</span>
+              )}
+              <span className="text-muted-foreground/70">·</span>
+              {REASONING_EFFORT_LABELS[settings.reasoning.effort]}
+            </span>
+            <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+          </div>
+        ) : (
+          <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+            <span
+              className={glassPill(
+                "inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[10px] font-medium text-foreground",
+              )}
+            >
+              {PROVIDER_LABELS[settings.provider]}
+              {activeModel && (
+                <>
+                  <span className="text-muted-foreground/70">·</span>
+                  <span className="max-w-[12rem] truncate font-mono">{activeModel}</span>
+                </>
+              )}
+            </span>
+            <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+          </div>
+        )}
+        <ChatInput
+          value={input}
+          onChange={setInput}
+          onSubmit={onSubmit}
+          onStop={onStop}
+          isStreaming={isStreaming}
+          attachments={attachmentsHook.attachments}
+          onAddFiles={(files) => void attachmentsHook.addFiles(files)}
+          onRemoveAttachment={attachmentsHook.remove}
+          onPaste={attachmentsHook.handlePaste}
+          isProcessingAttachments={attachmentsHook.isProcessing}
+          hasUnsupportedAttachments={attachmentsHook.hasUnsupported}
+        />
+      </div>
+    </div>
+  );
+}

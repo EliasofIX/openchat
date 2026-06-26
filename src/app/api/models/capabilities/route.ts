@@ -7,7 +7,14 @@ import type { ModelProvider } from "@/lib/types";
 export const runtime = "nodejs";
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
+const CACHE_CONTROL = "private, max-age=3600";
 const cache = new Map<string, { expires: number; capabilities: ModelCapabilities }>();
+
+function jsonCapabilities(capabilities: ModelCapabilities) {
+  return Response.json(capabilities, {
+    headers: { "Cache-Control": CACHE_CONTROL },
+  });
+}
 
 function cacheKey(
   provider: ModelProvider,
@@ -31,7 +38,7 @@ export async function GET(req: Request) {
   const key = cacheKey(provider, model, ollamaBaseUrl);
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) {
-    return Response.json(cached.capabilities);
+    return jsonCapabilities(cached.capabilities);
   }
 
   try {
@@ -42,7 +49,7 @@ export async function GET(req: Request) {
       ollamaBaseUrl,
     });
     cache.set(key, { capabilities, expires: Date.now() + CACHE_TTL_MS });
-    return Response.json(capabilities);
+    return jsonCapabilities(capabilities);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load model capabilities.";
     return new Response(message, { status: 502 });

@@ -54,8 +54,10 @@ type ChatRequest = {
 
 type StreamPart = "content" | "reasoning";
 
+const textEncoder = new TextEncoder();
+
 function encodePart(part: StreamPart, text: string): Uint8Array {
-  return new TextEncoder().encode(`${JSON.stringify({ p: part, t: text })}\n`);
+  return textEncoder.encode(`${JSON.stringify({ p: part, t: text })}\n`);
 }
 
 function extractDeltaReasoning(delta: ChatCompletionDelta | undefined | null): string {
@@ -244,7 +246,7 @@ export async function POST(req: Request) {
             }
             if (contentText) controller.enqueue(encodePart("content", contentText));
           } else if (contentText) {
-            controller.enqueue(new TextEncoder().encode(contentText));
+            controller.enqueue(textEncoder.encode(contentText));
           }
         }
 
