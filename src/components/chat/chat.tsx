@@ -124,7 +124,6 @@ export function Chat() {
   };
 
   const newChat = () => {
-    chat.stop();
     chat.setMessages([]);
     conv.createNew();
     lastUpsertRef.current = null;
@@ -245,6 +244,7 @@ export function Chat() {
         systemPrompt={systemPrompt}
         contextTokens={modelCapabilities.capabilities.contextTokens}
         modelCapabilitiesLoading={modelCapabilities.loading}
+        modelCapabilitiesError={modelCapabilities.error}
         settings={settingsHook.settings}
         attachmentsHook={attachmentsHook}
         onSend={onSend}

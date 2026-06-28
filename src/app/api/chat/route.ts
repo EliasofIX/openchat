@@ -163,6 +163,12 @@ export async function POST(req: Request) {
 
   const streamReasoning = shouldStreamReasoning(reasoning);
   const showReasoningInStream = Boolean(reasoning?.showInResponse);
+  const upstreamAbort = new AbortController();
+  const onClientAbort = () => upstreamAbort.abort();
+  if (req.signal.aborted) upstreamAbort.abort();
+  else req.signal.addEventListener("abort", onClientAbort, { once: true });
+
+  const streamSignal = { signal: upstreamAbort.signal };
   let upstream: AsyncGenerator<import("@/lib/ai-client").ChatCompletionChunk>;
 
   if (provider === "ollama") {
@@ -180,11 +186,14 @@ export async function POST(req: Request) {
     const client = createOllamaClient(baseUrl);
 
     try {
-      upstream = client.stream({
-        model: resolvedModel,
-        messages: upstreamMessages,
-        ...(reasoning?.enabled ? { think: true } : {}),
-      });
+      upstream = client.stream(
+        {
+          model: resolvedModel,
+          messages: upstreamMessages,
+          ...(reasoning?.enabled ? { think: true } : {}),
+        },
+        streamSignal,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown upstream error.";
       return new Response(`Ollama error: ${message}`, { status: 502 });
@@ -203,11 +212,14 @@ export async function POST(req: Request) {
     const reasoningParam = buildOpenRouterReasoning(reasoning, resolvedModel);
 
     try {
-      upstream = client.stream({
-        model: resolvedModel,
-        messages: upstreamMessages,
-        ...(reasoningParam ? { reasoning: reasoningParam } : {}),
-      });
+      upstream = client.stream(
+        {
+          model: resolvedModel,
+          messages: upstreamMessages,
+          ...(reasoningParam ? { reasoning: reasoningParam } : {}),
+        },
+        streamSignal,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown upstream error.";
       return new Response(`OpenRouter error: ${message}`, { status: 502 });
@@ -222,6 +234,7 @@ export async function POST(req: Request) {
 
       try {
         for await (const chunk of upstream) {
+          if (upstreamAbort.signal.aborted) break;
           const delta = chunk.choices[0]?.delta;
           let reasoningText = extractDeltaReasoning(delta);
           let contentText = delta?.content ?? "";
@@ -283,11 +296,16 @@ export async function POST(req: Request) {
 
         controller.close();
       } catch (err) {
+        if ((err as Error).name === "AbortError" || upstreamAbort.signal.aborted) {
+          controller.close();
+          return;
+        }
         controller.error(err);
       }
     },
     cancel() {
-      // Client aborted (user clicked Stop).
+      upstreamAbort.abort();
+      req.signal.removeEventListener("abort", onClientAbort);
     },
   });
 

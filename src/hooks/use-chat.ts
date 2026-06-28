@@ -8,12 +8,12 @@
 //   • POST to /api/chat with the history (+ optional system prompt).
 //   • Read the response as a raw UTF-8 text stream and append tokens to the
 //     latest assistant message as they arrive (RAF-batched for smooth UI).
-//   • Abort the stream when the user clicks Stop.
+//   • Abort the stream when the user clicks Stop or the conversation changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildApiContent } from "@/lib/build-api-content";
-import { hydrateMessages } from "@/lib/hydrate-messages";
+import { findMissingAttachmentNames, hydrateMessages } from "@/lib/hydrate-messages";
 import { reconcileReasoningAndContent } from "@/lib/reasoning";
 import type { Message, MessageAttachment, ModelProvider, ReasoningSettings } from "@/lib/types";
 
@@ -67,6 +67,17 @@ function toApiMessage(m: Message): {
   return { role: m.role, content };
 }
 
+function reconcileAssistantText(
+  reasoning: string,
+  content: string,
+  settings: ReasoningSettings | undefined,
+): { reasoning: string; content: string } {
+  if (settings?.enabled && settings.showInResponse) {
+    return reconcileReasoningAndContent(reasoning, content);
+  }
+  return { reasoning, content };
+}
+
 export function useChat(options: UseChatOptions = {}) {
   const { systemPrompt, provider, model, apiKey, ollamaBaseUrl, reasoning, onFinish, onMessagesChange } = options;
 
@@ -84,6 +95,7 @@ export function useChat(options: UseChatOptions = {}) {
   const onFinishRef = useRef(onFinish);
   const onMessagesChangeRef = useRef(onMessagesChange);
   const abortRef = useRef<AbortController | null>(null);
+  const streamGenRef = useRef(0);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { systemPromptRef.current = systemPrompt; }, [systemPrompt]);
@@ -100,6 +112,9 @@ export function useChat(options: UseChatOptions = {}) {
   }, []);
 
   const setAll = useCallback((next: Message[]) => {
+    streamGenRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
     setMessages(next);
     setStatus("idle");
     setError(null);
@@ -129,6 +144,8 @@ export function useChat(options: UseChatOptions = {}) {
       { id: assistantId, role: "assistant", content: "", createdAt: Date.now() },
     ];
 
+    const streamGen = streamGenRef.current;
+
     setMessages(streamingMessages);
     flushPersist(streamingMessages);
     setStatus("streaming");
@@ -136,6 +153,8 @@ export function useChat(options: UseChatOptions = {}) {
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    const isStale = () => streamGen !== streamGenRef.current;
 
     let accumulated = "";
     let accumulatedReasoning = "";
@@ -158,6 +177,7 @@ export function useChat(options: UseChatOptions = {}) {
     };
 
     const flushAssistantUi = () => {
+      if (isStale()) return;
       flushTimer = null;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -175,7 +195,7 @@ export function useChat(options: UseChatOptions = {}) {
     };
 
     const scheduleAssistantUi = () => {
-      if (flushTimer !== null) return;
+      if (isStale() || flushTimer !== null) return;
       const lowPower =
         typeof document !== "undefined" &&
         document.documentElement.classList.contains("low-power");
@@ -189,6 +209,7 @@ export function useChat(options: UseChatOptions = {}) {
     };
 
     const applyPart = (part: StreamPart) => {
+      if (isStale()) return;
       if (part.p === "reasoning") {
         if (!reasoningStartedAt) reasoningStartedAt = Date.now();
         accumulatedReasoning += part.t;
@@ -201,8 +222,63 @@ export function useChat(options: UseChatOptions = {}) {
       scheduleAssistantUi();
     };
 
+    const finalizeAssistant = (
+      content: string,
+      reasoningText: string,
+    ): { content: string; reasoning: string } =>
+      reconcileAssistantText(reasoningText, content, reasoningRef.current);
+
+    const persistMessages = (
+      content: string,
+      reasoningText: string,
+      durationMs: number | undefined,
+    ) => {
+      if (isStale()) return;
+
+      const split = finalizeAssistant(content, reasoningText);
+      const hasPartial = split.content !== "" || split.reasoning !== "";
+
+      if (!hasPartial) {
+        setMessages(baseMessages);
+        flushPersist(baseMessages);
+        return;
+      }
+
+      const finalAssistant: Message = {
+        id: assistantId,
+        role: "assistant",
+        content: split.content,
+        ...(split.reasoning ? { reasoning: split.reasoning } : {}),
+        ...(durationMs !== undefined ? { reasoningDurationMs: durationMs } : {}),
+        createdAt: Date.now(),
+      };
+      const finalMessages = [...baseMessages, finalAssistant];
+      setMessages(finalMessages);
+      flushPersist(finalMessages);
+      return finalAssistant;
+    };
+
+    const completeStream = (
+      content: string,
+      reasoningText: string,
+      durationMs: number | undefined,
+    ) => {
+      const finalAssistant = persistMessages(content, reasoningText, durationMs);
+      if (finalAssistant) {
+        onFinishRef.current?.(finalAssistant, [...baseMessages, finalAssistant]);
+      }
+    };
+
     try {
       const hydratedBase = await hydrateMessages(baseMessages);
+      if (isStale()) return;
+
+      const missing = findMissingAttachmentNames(hydratedBase);
+      if (missing.length > 0) {
+        throw new Error(
+          `Attachment unavailable: ${missing.join(", ")}. The file data may have been cleared from browser storage.`,
+        );
+      }
 
       const payload: Record<string, unknown> = {
         systemPrompt: systemPromptRef.current,
@@ -239,6 +315,11 @@ export function useChat(options: UseChatOptions = {}) {
       let lineBuffer = "";
 
       while (true) {
+        if (isStale()) {
+          await reader.cancel().catch(() => {});
+          return;
+        }
+
         const { value, done } = await reader.read();
         if (done) break;
 
@@ -281,54 +362,39 @@ export function useChat(options: UseChatOptions = {}) {
         aborted = true;
       } else {
         abortRef.current = null;
+        if (isStale()) return;
+
+        flushAssistantUi();
+
+        persistMessages(accumulated, accumulatedReasoning, reasoningDurationMs);
         setStatus("error");
         setError((err as Error).message);
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last && last.id === assistantId && last.content === "" && !last.reasoning) {
-            return prev.slice(0, -1);
-          }
-          return prev;
-        });
         return;
       }
     }
 
     cancelFlush();
+    if (isStale()) {
+      abortRef.current = null;
+      return;
+    }
+
     flushAssistantUi();
 
-    if (reasoningRef.current?.enabled && reasoningRef.current?.showInResponse) {
-      const split = reconcileReasoningAndContent(accumulatedReasoning, accumulated);
-      accumulatedReasoning = split.reasoning;
-      accumulated = split.content;
-    }
+    const split = finalizeAssistant(accumulated, accumulatedReasoning);
+    accumulatedReasoning = split.reasoning;
+    accumulated = split.content;
 
     abortRef.current = null;
     setStatus("idle");
 
     if (aborted && accumulated === "" && accumulatedReasoning === "") {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.id === assistantId && last.content === "" && !last.reasoning) {
-          return prev.slice(0, -1);
-        }
-        return prev;
-      });
+      setMessages(baseMessages);
+      flushPersist(baseMessages);
       return;
     }
 
-    const finalAssistant: Message = {
-      id: assistantId,
-      role: "assistant",
-      content: accumulated,
-      ...(accumulatedReasoning ? { reasoning: accumulatedReasoning } : {}),
-      ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
-      createdAt: Date.now(),
-    };
-    const finalMessages = [...baseMessages, finalAssistant];
-    setMessages(finalMessages);
-    flushPersist(finalMessages);
-    onFinishRef.current?.(finalAssistant, finalMessages);
+    completeStream(accumulated, accumulatedReasoning, reasoningDurationMs);
   }, [flushPersist]);
 
   return {
