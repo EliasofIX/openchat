@@ -194,6 +194,8 @@ html.electron-macos .electron-sidebar {
   padding-top: var(--electron-chrome-h, 52px);
 }
 
+/* Docked sidebar is a flex column (no shadow); overlay drawer keeps shadow-lg in sidebar.tsx */
+
 /* Desktop low-power mode: the Electron shell toggles `.low-power` on <html>
    (on battery, hidden, or minimized — see electron/preload.js). Drop the
    GPU-expensive glass blur to save power; restored on AC / when visible. */

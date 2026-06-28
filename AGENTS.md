@@ -252,6 +252,7 @@ Example (too much):
 | Change streaming behavior | `src/hooks/use-chat.ts`, `src/app/api/chat/route.ts` |
 | Add / change provider | `src/app/api/chat/route.ts`, `src/lib/ai-completion.ts` |
 | Conversation list / titles | `src/hooks/use-conversations.ts`, `src/lib/generate-title.ts` |
+| Sidebar open / docked layout | `src/hooks/use-sidebar-open.ts`, `src/components/chat/sidebar.tsx`, `src/components/chat/chat.tsx` — docked on `md+` with persisted open state (`openchat:sidebar-open`); mobile stays overlay drawer |
 | User settings | `src/hooks/use-settings.ts`, `src/lib/storage.ts` |
 | Attachment blobs (IDB) | `src/lib/attachment-store.ts`, `src/hooks/use-attachment-blob.ts` |
 | Assistant message rendering | `src/components/markdown.tsx`, `src/components/chat/message.tsx` |

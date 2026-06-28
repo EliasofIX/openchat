@@ -14,6 +14,7 @@ const KEY_CONV_INDEX = "openchat:conv-index";
 const KEY_CONV_PREFIX = "openchat:conv:";
 const KEY_SETTINGS = "openchat:settings";
 const KEY_ACTIVE = "openchat:active-conversation";
+const KEY_SIDEBAR_OPEN = "openchat:sidebar-open";
 
 export type StorageError = "quota_exceeded";
 
@@ -273,5 +274,15 @@ export const storage = {
     if (typeof window === "undefined") return;
     if (id) safeSetItem(KEY_ACTIVE, id);
     else localStorage.removeItem(KEY_ACTIVE);
+  },
+
+  loadSidebarOpen(): boolean {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(KEY_SIDEBAR_OPEN) === "1";
+  },
+
+  saveSidebarOpen(open: boolean) {
+    if (typeof window === "undefined") return;
+    safeSetItem(KEY_SIDEBAR_OPEN, open ? "1" : "0");
   },
 };

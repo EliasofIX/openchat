@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Menu, SquarePen } from "@/components/icons";
+import { PanelLeft, PanelLeftClose, SquarePen } from "@/components/icons";
 import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
 import type { SettingsTab } from "./settings-dialog";
@@ -12,6 +12,7 @@ import { useAttachments } from "@/hooks/use-attachments";
 import { useLowPower } from "@/hooks/use-low-power";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
+import { useSidebarOpen } from "@/hooks/use-sidebar-open";
 import { useColorAccent } from "@/hooks/use-color-accent";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
 import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
@@ -82,7 +83,7 @@ export function Chat() {
     modelCapabilities.loading,
   );
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebar = useSidebarOpen();
   const [sidebarMounted, setSidebarMounted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
@@ -96,8 +97,8 @@ export function Chat() {
   useEffect(() => onStorageError(setStorageError), []);
 
   useEffect(() => {
-    if (sidebarOpen) setSidebarMounted(true);
-  }, [sidebarOpen]);
+    if (sidebar.open || sidebar.variant === "docked") setSidebarMounted(true);
+  }, [sidebar.open, sidebar.variant]);
 
   const openSettings = (tab: SettingsTab = "general") => {
     setSettingsTab(tab);
@@ -129,130 +130,139 @@ export function Chat() {
     lastUpsertRef.current = null;
     attachmentsHook.clear();
     setComposerReset((n) => n + 1);
-    setSidebarOpen(false);
     setVisibleCount(VISIBLE_MESSAGE_LIMIT);
   };
 
+  const showHeaderNewChat = !sidebar.open || sidebar.variant === "overlay";
+
   return (
-    <div className="relative h-dvh overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       {sidebarMounted && (
         <Sidebar
-          open={sidebarOpen}
-          onOpenChange={setSidebarOpen}
+          open={sidebar.open}
+          variant={sidebar.variant}
+          onOpenChange={sidebar.setOpen}
+          onNewChat={newChat}
           conversations={conv.conversations}
           activeId={conv.activeId}
           onSelect={(id) => conv.select(id)}
           onDelete={conv.remove}
-          onOpenSettings={() => {
-            setSidebarOpen(false);
-            openSettings("general");
-          }}
+          onOpenSettings={() => openSettings("general")}
         />
       )}
 
-      {settingsOpen && (
-        <SettingsDialog
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-          settings={settingsHook.settings}
-          onSave={settingsHook.update}
-          initialTab={settingsTab}
-        />
-      )}
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        {settingsOpen && (
+          <SettingsDialog
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            settings={settingsHook.settings}
+            onSave={settingsHook.update}
+            initialTab={settingsTab}
+          />
+        )}
 
-      {storageError === "quota_exceeded" && (
-        <div className="absolute inset-x-0 top-12 z-30 mx-auto max-w-3xl px-4">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            <span>Storage is full. Oldest conversations may have been removed.</span>
-            <button
-              type="button"
-              onClick={() => {
-                clearStorageError();
-                setStorageError(null);
-              }}
-              className="shrink-0 rounded px-2 py-0.5 text-xs hover:bg-destructive/10"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
-      <header className="electron-header absolute inset-x-0 top-0 z-10 flex items-center">
-        <div className="electron-traffic-spacer" aria-hidden />
-        <div className="electron-no-drag flex items-center gap-0.5">
-          <IconButton onClick={() => setSidebarOpen(true)} label="Open conversations" compact>
-            <Menu size={18} />
-          </IconButton>
-          <IconButton onClick={newChat} label="New chat" compact>
-            <SquarePen size={17} />
-          </IconButton>
-        </div>
-        <div className="electron-chrome-drag flex-1 self-stretch" aria-hidden="true" />
-      </header>
-
-      <main className="h-full overflow-y-auto">
-        {chat.messages.length === 0 ? (
-          <EmptyState name={settingsHook.settings.name} />
-        ) : (
-          <div className="mx-auto w-full max-w-3xl px-4 pt-16 pb-44">
-            <div className="space-y-6">
-              {hiddenCount > 0 && (
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setVisibleCount((n) => n + LOAD_MORE_MESSAGE_STEP)
-                    }
-                    className="rounded-full border border-border bg-muted px-4 py-1.5 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                  >
-                    Load earlier messages ({hiddenCount} hidden)
-                  </button>
-                </div>
-              )}
-              {visibleMessages.map((m, i) => {
-                const globalIndex = hiddenCount > 0 ? hiddenCount + i : i;
-                return (
-                  <div key={m.id} className="message-row">
-                    <MessageItem
-                      message={m}
-                      isStreaming={
-                        chat.isStreaming &&
-                        m.role === "assistant" &&
-                        globalIndex === chat.messages.length - 1
-                      }
-                      collapseReasoningByDefault={
-                        settingsHook.settings.reasoning.collapseByDefault
-                      }
-                    />
-                  </div>
-                );
-              })}
-              {chat.error && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {chat.error}
-                </div>
-              )}
+        {storageError === "quota_exceeded" && (
+          <div className="absolute inset-x-0 top-12 z-30 mx-auto max-w-3xl px-4">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <span>Storage is full. Oldest conversations may have been removed.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  clearStorageError();
+                  setStorageError(null);
+                }}
+                className="shrink-0 rounded px-2 py-0.5 text-xs hover:bg-destructive/10"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         )}
-      </main>
 
-      <ChatComposer
-        messages={chat.messages}
-        isStreaming={chat.isStreaming}
-        systemPrompt={systemPrompt}
-        contextTokens={modelCapabilities.capabilities.contextTokens}
-        modelCapabilitiesLoading={modelCapabilities.loading}
-        modelCapabilitiesError={modelCapabilities.error}
-        settings={settingsHook.settings}
-        attachmentsHook={attachmentsHook}
-        onSend={onSend}
-        onStop={chat.stop}
-        resetSignal={composerReset}
-      />
+        <header className="electron-header absolute inset-x-0 top-0 z-10 flex items-center">
+          <div className="electron-traffic-spacer" aria-hidden />
+          <div className="electron-no-drag flex items-center gap-0.5">
+            <IconButton
+              onClick={sidebar.toggle}
+              label={sidebar.open ? "Close sidebar" : "Open sidebar"}
+              compact
+              aria-expanded={sidebar.open}
+            >
+              {sidebar.open ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+            </IconButton>
+            {showHeaderNewChat && (
+              <IconButton onClick={newChat} label="New chat" compact>
+                <SquarePen size={17} />
+              </IconButton>
+            )}
+          </div>
+          <div className="electron-chrome-drag flex-1 self-stretch" aria-hidden="true" />
+        </header>
 
-      <ChatDisclaimer />
+        <main className="h-full overflow-y-auto">
+          {chat.messages.length === 0 ? (
+            <EmptyState name={settingsHook.settings.name} />
+          ) : (
+            <div className="mx-auto w-full max-w-3xl px-4 pt-16 pb-44">
+              <div className="space-y-6">
+                {hiddenCount > 0 && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleCount((n) => n + LOAD_MORE_MESSAGE_STEP)
+                      }
+                      className="rounded-full border border-border bg-muted px-4 py-1.5 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                    >
+                      Load earlier messages ({hiddenCount} hidden)
+                    </button>
+                  </div>
+                )}
+                {visibleMessages.map((m, i) => {
+                  const globalIndex = hiddenCount > 0 ? hiddenCount + i : i;
+                  return (
+                    <div key={m.id} className="message-row">
+                      <MessageItem
+                        message={m}
+                        isStreaming={
+                          chat.isStreaming &&
+                          m.role === "assistant" &&
+                          globalIndex === chat.messages.length - 1
+                        }
+                        collapseReasoningByDefault={
+                          settingsHook.settings.reasoning.collapseByDefault
+                        }
+                      />
+                    </div>
+                  );
+                })}
+                {chat.error && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {chat.error}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+
+        <ChatComposer
+          messages={chat.messages}
+          isStreaming={chat.isStreaming}
+          systemPrompt={systemPrompt}
+          contextTokens={modelCapabilities.capabilities.contextTokens}
+          modelCapabilitiesLoading={modelCapabilities.loading}
+          modelCapabilitiesError={modelCapabilities.error}
+          settings={settingsHook.settings}
+          attachmentsHook={attachmentsHook}
+          onSend={onSend}
+          onStop={chat.stop}
+          resetSignal={composerReset}
+        />
+
+        <ChatDisclaimer />
+      </div>
     </div>
   );
 }
@@ -279,11 +289,13 @@ function IconButton({
   label,
   onClick,
   compact = false,
+  "aria-expanded": ariaExpanded,
 }: {
   children: React.ReactNode;
   label: string;
   onClick: () => void;
   compact?: boolean;
+  "aria-expanded"?: boolean;
 }) {
   return (
     <button
@@ -291,6 +303,7 @@ function IconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
+      aria-expanded={ariaExpanded}
       className={cn(
         "grid place-items-center rounded-lg text-muted-foreground transition",
         compact ? "size-8" : "size-9",
