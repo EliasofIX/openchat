@@ -24,12 +24,23 @@ function cacheKey(
   return `${provider}:${model.trim().toLowerCase()}:${ollamaBaseUrl?.trim() ?? ""}`;
 }
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const provider = searchParams.get("provider") === "ollama" ? "ollama" : "openrouter";
-  const model = searchParams.get("model")?.trim() ?? "";
-  const apiKey = searchParams.get("apiKey")?.trim();
-  const ollamaBaseUrl = searchParams.get("ollamaBaseUrl")?.trim();
+type CapabilitiesInput = {
+  provider?: string;
+  model?: string;
+  apiKey?: string;
+  ollamaBaseUrl?: string;
+};
+
+function parseInput(input: CapabilitiesInput) {
+  const provider: ModelProvider = input.provider === "ollama" ? "ollama" : "openrouter";
+  const model = input.model?.trim() ?? "";
+  const apiKey = input.apiKey?.trim();
+  const ollamaBaseUrl = input.ollamaBaseUrl?.trim();
+  return { provider, model, apiKey, ollamaBaseUrl };
+}
+
+async function loadCapabilities(input: CapabilitiesInput) {
+  const { provider, model, apiKey, ollamaBaseUrl } = parseInput(input);
 
   if (!model) {
     return new Response("`model` is required.", { status: 400 });
@@ -54,4 +65,23 @@ export async function GET(req: Request) {
     const message = err instanceof Error ? err.message : "Failed to load model capabilities.";
     return new Response(message, { status: 502 });
   }
+}
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  return loadCapabilities({
+    provider: searchParams.get("provider") ?? undefined,
+    model: searchParams.get("model") ?? undefined,
+    ollamaBaseUrl: searchParams.get("ollamaBaseUrl") ?? undefined,
+  });
+}
+
+export async function POST(req: Request) {
+  let body: CapabilitiesInput;
+  try {
+    body = (await req.json()) as CapabilitiesInput;
+  } catch {
+    return new Response("Invalid JSON body.", { status: 400 });
+  }
+  return loadCapabilities(body);
 }

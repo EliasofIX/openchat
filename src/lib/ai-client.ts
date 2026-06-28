@@ -54,10 +54,17 @@ export type AiClientOptions = {
   headers?: Record<string, string>;
 };
 
+export type AiRequestOptions = {
+  signal?: AbortSignal;
+};
+
 export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOptions) {
   const root = baseURL.replace(/\/$/, "");
 
-  async function request<T>(body: ChatCompletionRequest): Promise<T> {
+  async function request<T>(
+    body: ChatCompletionRequest,
+    options: AiRequestOptions = {},
+  ): Promise<T> {
     const response = await fetch(`${root}/chat/completions`, {
       method: "POST",
       headers: {
@@ -66,6 +73,7 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
         ...headers,
       },
       body: JSON.stringify(body),
+      signal: options.signal,
     });
 
     if (!response.ok) {
@@ -77,11 +85,17 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
   }
 
   return {
-    async complete(body: Omit<ChatCompletionRequest, "stream">): Promise<ChatCompletionResponse> {
-      return request<ChatCompletionResponse>({ ...body, stream: false });
+    async complete(
+      body: Omit<ChatCompletionRequest, "stream">,
+      options: AiRequestOptions = {},
+    ): Promise<ChatCompletionResponse> {
+      return request<ChatCompletionResponse>({ ...body, stream: false }, options);
     },
 
-    async *stream(body: Omit<ChatCompletionRequest, "stream">): AsyncGenerator<ChatCompletionChunk> {
+    async *stream(
+      body: Omit<ChatCompletionRequest, "stream">,
+      options: AiRequestOptions = {},
+    ): AsyncGenerator<ChatCompletionChunk> {
       const response = await fetch(`${root}/chat/completions`, {
         method: "POST",
         headers: {
@@ -90,6 +104,7 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
           ...headers,
         },
         body: JSON.stringify({ ...body, stream: true }),
+        signal: options.signal,
       });
 
       if (!response.ok) {
@@ -105,27 +120,36 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
       const decoder = new TextDecoder();
       let buffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          if (options.signal?.aborted) {
+            await reader.cancel().catch(() => {});
+            break;
+          }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data:")) continue;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
 
-          const payload = trimmed.slice(5).trim();
-          if (payload === "[DONE]") return;
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith("data:")) continue;
 
-          try {
-            yield JSON.parse(payload) as ChatCompletionChunk;
-          } catch {
-            // Skip malformed SSE chunks.
+            const payload = trimmed.slice(5).trim();
+            if (payload === "[DONE]") return;
+
+            try {
+              yield JSON.parse(payload) as ChatCompletionChunk;
+            } catch {
+              // Skip malformed SSE chunks.
+            }
           }
         }
+      } finally {
+        reader.releaseLock();
       }
     },
   };

@@ -48,14 +48,18 @@ export function useModelCapabilities(options: Options) {
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({
+    const payload: Record<string, string> = {
       provider: options.provider,
       model,
-    });
-    if (options.apiKey?.trim()) params.set("apiKey", options.apiKey.trim());
-    if (options.ollamaBaseUrl?.trim()) params.set("ollamaBaseUrl", options.ollamaBaseUrl.trim());
+    };
+    if (options.apiKey?.trim()) payload.apiKey = options.apiKey.trim();
+    if (options.ollamaBaseUrl?.trim()) payload.ollamaBaseUrl = options.ollamaBaseUrl.trim();
 
-    void fetch(`/api/models/capabilities?${params}`)
+    void fetch("/api/models/capabilities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
       .then(async (res) => {
         if (!res.ok) {
           const detail = await res.text().catch(() => "");

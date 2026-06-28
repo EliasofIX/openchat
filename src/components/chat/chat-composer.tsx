@@ -19,6 +19,7 @@ type Props = {
   systemPrompt?: string;
   contextTokens: number | null;
   modelCapabilitiesLoading: boolean;
+  modelCapabilitiesError?: string | null;
   settings: UserSettings;
   attachmentsHook: AttachmentsHook;
   onSend: (text: string, files: MessageAttachment[]) => void;
@@ -46,6 +47,7 @@ export function ChatComposer({
   systemPrompt,
   contextTokens,
   modelCapabilitiesLoading,
+  modelCapabilitiesError,
   settings,
   attachmentsHook,
   onSend,
@@ -124,6 +126,16 @@ export function ChatComposer({
               {REASONING_EFFORT_LABELS[settings.reasoning.effort]}
             </span>
             <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+            {modelCapabilitiesError && (
+              <span
+                className={glassPill(
+                  "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
+                )}
+                title={modelCapabilitiesError}
+              >
+                Context limits unavailable
+              </span>
+            )}
           </div>
         ) : (
           <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
@@ -141,6 +153,16 @@ export function ChatComposer({
               )}
             </span>
             <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+            {modelCapabilitiesError && (
+              <span
+                className={glassPill(
+                  "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
+                )}
+                title={modelCapabilitiesError}
+              >
+                Context limits unavailable
+              </span>
+            )}
           </div>
         )}
         <ChatInput
