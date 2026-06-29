@@ -17,11 +17,21 @@ import { findMissingAttachmentNames, hydrateMessages } from "@/lib/hydrate-messa
 import {
   executeSaveMemoryTool,
   isMemoryToolCallWire,
+  mergeMemoryNotice,
+  memoryNoticeFromSave,
+  parseSaveMemoryArguments,
   SAVE_MEMORY_TOOL_NAME,
   type CompletedToolCall,
+  type SaveMemoryResult,
 } from "@/lib/memory-tools";
 import { reconcileReasoningAndContent } from "@/lib/reasoning";
-import type { Message, MessageAttachment, ModelProvider, ReasoningSettings } from "@/lib/types";
+import type {
+  MemoryNotice,
+  Message,
+  MessageAttachment,
+  ModelProvider,
+  ReasoningSettings,
+} from "@/lib/types";
 import type { ToolCall } from "@/lib/ai-client";
 
 const MAX_TOOL_ROUNDS = 3;
@@ -41,7 +51,7 @@ export type UseChatOptions = {
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
   memoryEnabled?: boolean;
-  onSaveMemory?: (content: string) => boolean;
+  onSaveMemory?: (content: string) => SaveMemoryResult;
   onFinish?: (assistantMessage: Message, allMessages: Message[]) => void;
   onMessagesChange?: (messages: Message[]) => void;
 };
@@ -207,6 +217,7 @@ export function useChat(options: UseChatOptions = {}) {
 
     let accumulated = "";
     let accumulatedReasoning = "";
+    let memoryNotice: MemoryNotice | undefined;
     let reasoningStartedAt: number | null = null;
     let reasoningDurationMs: number | undefined;
     let aborted = false;
@@ -238,6 +249,7 @@ export function useChat(options: UseChatOptions = {}) {
             content: accumulated,
             ...(accumulatedReasoning ? { reasoning: accumulatedReasoning } : {}),
             ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
+            ...(memoryNotice ? { memoryNotice } : {}),
           },
         ];
       });
@@ -285,6 +297,7 @@ export function useChat(options: UseChatOptions = {}) {
         content: split.content,
         ...(split.reasoning ? { reasoning: split.reasoning } : {}),
         ...(durationMs !== undefined ? { reasoningDurationMs: durationMs } : {}),
+        ...(memoryNotice ? { memoryNotice } : {}),
         createdAt: Date.now(),
       };
       const finalMessages = [...baseMessages, finalAssistant];
@@ -426,10 +439,17 @@ export function useChat(options: UseChatOptions = {}) {
         const saveMemory = onSaveMemoryRef.current;
         const toolResults: ApiPayloadMessage[] = toolCalls.map((call) => {
           if (call.name === SAVE_MEMORY_TOOL_NAME && saveMemory) {
+            const parsedContent = parseSaveMemoryArguments(call.arguments);
+            const result = parsedContent ? saveMemory(parsedContent) : ("invalid" as const);
+            const notice = memoryNoticeFromSave(parsedContent, result);
+            if (notice) {
+              memoryNotice = mergeMemoryNotice(memoryNotice, notice);
+              scheduleAssistantUi();
+            }
             return {
               role: "tool",
               tool_call_id: call.id,
-              content: executeSaveMemoryTool(call.arguments, saveMemory),
+              content: executeSaveMemoryTool(call.arguments, () => result),
             };
           }
           return {

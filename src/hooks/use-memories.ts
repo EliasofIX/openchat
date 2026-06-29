@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_MEMORIES, storage } from "@/lib/storage";
+import type { SaveMemoryResult } from "@/lib/memory-tools";
 import type { Memory } from "@/lib/types";
 
 function makeId() {
@@ -47,26 +48,33 @@ export function useMemories() {
     storage.saveMemories(normalized);
   }, []);
 
-  const add = useCallback(
-    (content: string, source: Memory["source"] = "user") => {
+  const tryAdd = useCallback(
+    (content: string, source: Memory["source"] = "user"): SaveMemoryResult => {
       const trimmed = content.trim().slice(0, 500);
-      if (!trimmed || isDuplicate(trimmed, memoriesRef.current)) return false;
+      if (!trimmed) return "invalid";
+      if (isDuplicate(trimmed, memoriesRef.current)) return "duplicate";
 
       const now = Date.now();
-      const next: Memory[] = [
-        {
-          id: makeId(),
-          content: trimmed,
-          createdAt: now,
-          updatedAt: now,
-          source,
-        },
-        ...memoriesRef.current,
-      ];
-      persist(next);
-      return true;
+      const entry: Memory = {
+        id: makeId(),
+        content: trimmed,
+        createdAt: now,
+        updatedAt: now,
+        source,
+      };
+      const normalized = trimToCap([entry, ...memoriesRef.current]);
+      if (!normalized.some((m) => m.id === entry.id)) return "full";
+
+      persist(normalized);
+      return "saved";
     },
     [persist],
+  );
+
+  const add = useCallback(
+    (content: string, source: Memory["source"] = "user") =>
+      tryAdd(content, source) === "saved",
+    [tryAdd],
   );
 
   const remove = useCallback(
@@ -99,6 +107,7 @@ export function useMemories() {
     memories,
     hydrated,
     add,
+    tryAdd,
     remove,
     update,
   };
