@@ -2,7 +2,10 @@
 // memory-tools — save_memory tool definition and helpers for chat tool-calling.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { MemoryNotice, MemoryNoticeStatus } from "@/lib/types";
 import type { ToolCallDelta } from "@/lib/ai-client";
+
+export type SaveMemoryResult = MemoryNoticeStatus | "invalid";
 
 export const SAVE_MEMORY_TOOL_NAME = "save_memory";
 
@@ -90,11 +93,39 @@ export function parseSaveMemoryArguments(argumentsJson: string): string | null {
 
 export function executeSaveMemoryTool(
   argumentsJson: string,
-  save: (content: string) => boolean,
+  save: (content: string) => SaveMemoryResult,
 ): string {
   const content = parseSaveMemoryArguments(argumentsJson);
   if (!content) return "Invalid memory content.";
-  return save(content) ? "Saved to memory." : "Already remembered or memory is full.";
+  switch (save(content)) {
+    case "saved":
+      return "Saved to memory.";
+    case "duplicate":
+      return "Already remembered.";
+    case "full":
+      return "Memory is full.";
+    default:
+      return "Invalid memory content.";
+  }
+}
+
+export function memoryNoticeFromSave(
+  content: string | null,
+  result: SaveMemoryResult,
+): MemoryNotice | null {
+  if (!content || result === "invalid") return null;
+  if (result === "full") return { status: "full" };
+  return { status: result, content };
+}
+
+export function mergeMemoryNotice(
+  prev: MemoryNotice | undefined,
+  next: MemoryNotice,
+): MemoryNotice {
+  if (!prev) return next;
+  if (prev.status === "saved") return prev;
+  if (next.status === "saved") return next;
+  return next;
 }
 
 export function toWireToolCall(call: CompletedToolCall): MemoryToolCallWire {

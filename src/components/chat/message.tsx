@@ -5,6 +5,7 @@ import { Check, Copy, FileCode2, FileText } from "@/components/icons";
 import { Markdown } from "@/components/markdown-lazy";
 import { useAttachmentBlob } from "@/hooks/use-attachment-blob";
 import { ReasoningPanel } from "./reasoning-panel";
+import { MemoryNoticeRow } from "./memory-notice-row";
 import { cn } from "@/lib/utils";
 import type { Message, MessageAttachment } from "@/lib/types";
 
@@ -13,11 +14,13 @@ function messagePropsEqual(
     message: Message;
     isStreaming?: boolean;
     collapseReasoningByDefault?: boolean;
+    onOpenMemorySettings?: () => void;
   },
   next: {
     message: Message;
     isStreaming?: boolean;
     collapseReasoningByDefault?: boolean;
+    onOpenMemorySettings?: () => void;
   },
 ) {
   return (
@@ -25,9 +28,12 @@ function messagePropsEqual(
     prev.message.content === next.message.content &&
     prev.message.reasoning === next.message.reasoning &&
     prev.message.reasoningDurationMs === next.message.reasoningDurationMs &&
+    prev.message.memoryNotice?.status === next.message.memoryNotice?.status &&
+    prev.message.memoryNotice?.content === next.message.memoryNotice?.content &&
     prev.message.attachments?.length === next.message.attachments?.length &&
     prev.isStreaming === next.isStreaming &&
-    prev.collapseReasoningByDefault === next.collapseReasoningByDefault
+    prev.collapseReasoningByDefault === next.collapseReasoningByDefault &&
+    prev.onOpenMemorySettings === next.onOpenMemorySettings
   );
 }
 
@@ -35,10 +41,12 @@ function MessageItemInner({
   message,
   isStreaming = false,
   collapseReasoningByDefault = true,
+  onOpenMemorySettings,
 }: {
   message: Message;
   isStreaming?: boolean;
   collapseReasoningByDefault?: boolean;
+  onOpenMemorySettings?: () => void;
 }) {
   if (message.role === "user") {
     const hasAttachments = Boolean(message.attachments?.length);
@@ -67,6 +75,7 @@ function MessageItemInner({
       message={message}
       isStreaming={isStreaming}
       collapseReasoningByDefault={collapseReasoningByDefault}
+      onOpenMemorySettings={onOpenMemorySettings}
     />
   );
 }
@@ -77,15 +86,19 @@ function AssistantMessage({
   message,
   isStreaming,
   collapseReasoningByDefault,
+  onOpenMemorySettings,
 }: {
   message: Message;
   isStreaming: boolean;
   collapseReasoningByDefault: boolean;
+  onOpenMemorySettings?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const hasReasoning = Boolean(message.reasoning?.trim());
   const hasContent = Boolean(message.content);
   const isThinking = isStreaming && hasReasoning && !hasContent;
+  const memoryNotice = message.memoryNotice;
+  const showMemoryNotice = Boolean(memoryNotice);
 
   const onCopy = async () => {
     try {
@@ -116,6 +129,13 @@ function AssistantMessage({
       )}
 
       {!hasContent && !hasReasoning && isStreaming && <StreamingCursor />}
+
+      {showMemoryNotice && memoryNotice && (
+        <MemoryNoticeRow
+          notice={memoryNotice}
+          onOpenMemorySettings={onOpenMemorySettings}
+        />
+      )}
 
       {hasContent && !isStreaming && (
         <div className="mt-1.5 -ml-1 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">

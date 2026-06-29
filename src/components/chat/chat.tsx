@@ -1,12 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { PanelLeft, PanelLeftClose, SquarePen } from "@/components/icons";
 import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
-import type { SettingsTab } from "./settings-dialog";
+import type { SettingsTab, SettingsScrollTarget } from "./settings-dialog";
 import { useChat } from "@/hooks/use-chat";
 import { useAttachments } from "@/hooks/use-attachments";
 import { useLowPower } from "@/hooks/use-low-power";
@@ -60,7 +60,7 @@ export function Chat() {
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
     memoryEnabled: settingsHook.settings.memory.enabled,
-    onSaveMemory: (content) => memoriesHook.add(content, "agent"),
+    onSaveMemory: (content) => memoriesHook.tryAdd(content, "agent"),
     onFinish: (_msg, all) => {
       const saved = lastUpsertRef.current;
       void convRef.current.maybeGenerateTitle(
@@ -91,6 +91,7 @@ export function Chat() {
   const [sidebarMounted, setSidebarMounted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [settingsScrollTo, setSettingsScrollTo] = useState<SettingsScrollTarget | null>(null);
   const [visibleCount, setVisibleCount] = useState(VISIBLE_MESSAGE_LIMIT);
   const [storageError, setStorageError] = useState(getStorageError());
   const [composerReset, setComposerReset] = useState(0);
@@ -106,8 +107,15 @@ export function Chat() {
 
   const openSettings = (tab: SettingsTab = "general") => {
     setSettingsTab(tab);
+    setSettingsScrollTo(null);
     setSettingsOpen(true);
   };
+
+  const openMemorySettings = useCallback(() => {
+    setSettingsTab("general");
+    setSettingsScrollTo("memory");
+    setSettingsOpen(true);
+  }, []);
 
   useEffect(() => {
     if (!conv.hydrated) return;
@@ -166,6 +174,8 @@ export function Chat() {
             onAddMemory={memoriesHook.add}
             onRemoveMemory={memoriesHook.remove}
             initialTab={settingsTab}
+            scrollTo={settingsScrollTo}
+            onScrolled={() => setSettingsScrollTo(null)}
           />
         )}
 
@@ -239,6 +249,11 @@ export function Chat() {
                         }
                         collapseReasoningByDefault={
                           settingsHook.settings.reasoning.collapseByDefault
+                        }
+                        onOpenMemorySettings={
+                          settingsHook.settings.memory.enabled
+                            ? openMemorySettings
+                            : undefined
                         }
                       />
                     </div>

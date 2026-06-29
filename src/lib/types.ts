@@ -19,6 +19,14 @@ export type PendingAttachment = MessageAttachment & {
   previewUrl?: string;
 };
 
+export type MemoryNoticeStatus = "saved" | "duplicate" | "full";
+
+export type MemoryNotice = {
+  status: MemoryNoticeStatus;
+  /** Saved fact text; omitted when memory is full. */
+  content?: string;
+};
+
 export type Message = {
   id: string;
   role: Role;
@@ -26,6 +34,7 @@ export type Message = {
   attachments?: MessageAttachment[];
   reasoning?: string;
   reasoningDurationMs?: number;
+  memoryNotice?: MemoryNotice;
   createdAt: number;
 };
 

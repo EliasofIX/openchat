@@ -31,6 +31,7 @@ const TitleSettings = dynamic(
 );
 
 export type SettingsTab = "general" | "providers";
+export type SettingsScrollTarget = "memory";
 
 type Props = {
   open: boolean;
@@ -41,6 +42,8 @@ type Props = {
   onAddMemory: (content: string) => boolean;
   onRemoveMemory: (id: string) => void;
   initialTab?: SettingsTab;
+  scrollTo?: SettingsScrollTarget | null;
+  onScrolled?: () => void;
 };
 
 export function SettingsDialog({
@@ -52,6 +55,8 @@ export function SettingsDialog({
   onAddMemory,
   onRemoveMemory,
   initialTab = "general",
+  scrollTo = null,
+  onScrolled,
 }: Props) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [name, setName] = useState(settings.name);
@@ -71,6 +76,16 @@ export function SettingsDialog({
   const [memorySettings, setMemorySettings] = useState(settings.memory);
   const [colorAccent, setColorAccent] = useState<string | null>(settings.colorAccent);
   const previewAccentRef = useRef<string | null>(settings.colorAccent);
+  const memorySectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || scrollTo !== "memory") return;
+    const frame = requestAnimationFrame(() => {
+      memorySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      onScrolled?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, scrollTo, onScrolled]);
 
   useEffect(() => {
     if (open) {
@@ -187,15 +202,17 @@ export function SettingsDialog({
 
               <Separator />
 
-              <MemorySettings
-                memorySettings={memorySettings}
-                onMemorySettingsChange={(patch) =>
-                  setMemorySettings((prev) => ({ ...prev, ...patch }))
-                }
-                memories={memories}
-                onAddMemory={onAddMemory}
-                onRemoveMemory={onRemoveMemory}
-              />
+              <div ref={memorySectionRef}>
+                <MemorySettings
+                  memorySettings={memorySettings}
+                  onMemorySettingsChange={(patch) =>
+                    setMemorySettings((prev) => ({ ...prev, ...patch }))
+                  }
+                  memories={memories}
+                  onAddMemory={onAddMemory}
+                  onRemoveMemory={onRemoveMemory}
+                />
+              </div>
 
               <Separator />
 
