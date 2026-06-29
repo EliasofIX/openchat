@@ -14,8 +14,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildApiContent } from "@/lib/build-api-content";
 import { findMissingAttachmentNames, hydrateMessages } from "@/lib/hydrate-messages";
+import {
+  executeSaveMemoryTool,
+  isMemoryToolCallWire,
+  SAVE_MEMORY_TOOL_NAME,
+  type CompletedToolCall,
+} from "@/lib/memory-tools";
 import { reconcileReasoningAndContent } from "@/lib/reasoning";
 import type { Message, MessageAttachment, ModelProvider, ReasoningSettings } from "@/lib/types";
+import type { ToolCall } from "@/lib/ai-client";
+
+const MAX_TOOL_ROUNDS = 3;
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -31,24 +40,49 @@ export type UseChatOptions = {
   apiKey?: string;
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
+  memoryEnabled?: boolean;
+  onSaveMemory?: (content: string) => boolean;
   onFinish?: (assistantMessage: Message, allMessages: Message[]) => void;
   onMessagesChange?: (messages: Message[]) => void;
 };
 
-type StreamPart = { p: "content" | "reasoning"; t: string };
+type StreamPart =
+  | { p: "content" | "reasoning"; t: string }
+  | { p: "tool_call"; id: string; name: string; arguments: string };
 
-function isNdjsonStream(contentType: string | null): boolean {
-  return contentType?.includes("application/x-ndjson") ?? false;
+type ApiPayloadMessage = {
+  role: "user" | "assistant" | "tool";
+  content?: string | ReturnType<typeof buildApiContent> | null;
+  reasoning?: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+};
+
+function isNdjsonStream(contentType: string | null, memoryEnabled: boolean): boolean {
+  if (contentType?.includes("application/x-ndjson")) return true;
+  return memoryEnabled;
 }
 
 function parseStreamLine(line: string): StreamPart | null {
   try {
-    const parsed = JSON.parse(line) as StreamPart;
-    if (parsed.p === "content" || parsed.p === "reasoning") return parsed;
+    const parsed = JSON.parse(line) as unknown;
+    if (isMemoryToolCallWire(parsed)) return parsed;
+    const part = parsed as { p?: string; t?: string };
+    if (part.p === "content" || part.p === "reasoning") {
+      return { p: part.p, t: part.t ?? "" };
+    }
     return null;
   } catch {
     return null;
   }
+}
+
+function toWireToolCall(call: CompletedToolCall): ToolCall {
+  return {
+    id: call.id,
+    type: "function",
+    function: { name: call.name, arguments: call.arguments },
+  };
 }
 
 function toApiMessage(m: Message): {
@@ -79,7 +113,18 @@ function reconcileAssistantText(
 }
 
 export function useChat(options: UseChatOptions = {}) {
-  const { systemPrompt, provider, model, apiKey, ollamaBaseUrl, reasoning, onFinish, onMessagesChange } = options;
+  const {
+    systemPrompt,
+    provider,
+    model,
+    apiKey,
+    ollamaBaseUrl,
+    reasoning,
+    memoryEnabled,
+    onSaveMemory,
+    onFinish,
+    onMessagesChange,
+  } = options;
 
   const [messages, setMessages] = useState<Message[]>(options.initialMessages ?? []);
   const [status, setStatus] = useState<ChatStatus>("idle");
@@ -92,6 +137,8 @@ export function useChat(options: UseChatOptions = {}) {
   const apiKeyRef = useRef(apiKey);
   const ollamaBaseUrlRef = useRef(ollamaBaseUrl);
   const reasoningRef = useRef(reasoning);
+  const memoryEnabledRef = useRef(memoryEnabled);
+  const onSaveMemoryRef = useRef(onSaveMemory);
   const onFinishRef = useRef(onFinish);
   const onMessagesChangeRef = useRef(onMessagesChange);
   const abortRef = useRef<AbortController | null>(null);
@@ -104,6 +151,8 @@ export function useChat(options: UseChatOptions = {}) {
   useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
   useEffect(() => { ollamaBaseUrlRef.current = ollamaBaseUrl; }, [ollamaBaseUrl]);
   useEffect(() => { reasoningRef.current = reasoning; }, [reasoning]);
+  useEffect(() => { memoryEnabledRef.current = memoryEnabled; }, [memoryEnabled]);
+  useEffect(() => { onSaveMemoryRef.current = onSaveMemory; }, [onSaveMemory]);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
   useEffect(() => { onMessagesChangeRef.current = onMessagesChange; }, [onMessagesChange]);
 
@@ -208,20 +257,6 @@ export function useChat(options: UseChatOptions = {}) {
       }
     };
 
-    const applyPart = (part: StreamPart) => {
-      if (isStale()) return;
-      if (part.p === "reasoning") {
-        if (!reasoningStartedAt) reasoningStartedAt = Date.now();
-        accumulatedReasoning += part.t;
-      } else {
-        if (reasoningStartedAt && reasoningDurationMs === undefined) {
-          reasoningDurationMs = Date.now() - reasoningStartedAt;
-        }
-        accumulated += part.t;
-      }
-      scheduleAssistantUi();
-    };
-
     const finalizeAssistant = (
       content: string,
       reasoningText: string,
@@ -280,72 +315,140 @@ export function useChat(options: UseChatOptions = {}) {
         );
       }
 
-      const payload: Record<string, unknown> = {
-        systemPrompt: systemPromptRef.current,
-        messages: hydratedBase.map(toApiMessage),
-        provider: providerRef.current ?? "openrouter",
-      };
+      const baseApiMessages = hydratedBase.map(toApiMessage);
+      let followUpMessages: ApiPayloadMessage[] = [];
+      let toolRound = 0;
 
-      const resolvedModel = modelRef.current?.trim();
-      if (resolvedModel) payload.model = resolvedModel;
+      while (toolRound <= MAX_TOOL_ROUNDS) {
+        if (isStale()) return;
 
-      const resolvedKey = apiKeyRef.current?.trim();
-      if (resolvedKey) payload.apiKey = resolvedKey;
+        const payload: Record<string, unknown> = {
+          systemPrompt: systemPromptRef.current,
+          messages: [...baseApiMessages, ...followUpMessages],
+          provider: providerRef.current ?? "openrouter",
+          memoryEnabled: Boolean(memoryEnabledRef.current),
+        };
 
-      const resolvedOllamaUrl = ollamaBaseUrlRef.current?.trim();
-      if (resolvedOllamaUrl) payload.ollamaBaseUrl = resolvedOllamaUrl;
+        const resolvedModel = modelRef.current?.trim();
+        if (resolvedModel) payload.model = resolvedModel;
 
-      if (reasoningRef.current) payload.reasoning = reasoningRef.current;
+        const resolvedKey = apiKeyRef.current?.trim();
+        if (resolvedKey) payload.apiKey = resolvedKey;
 
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify(payload),
-      });
+        const resolvedOllamaUrl = ollamaBaseUrlRef.current?.trim();
+        if (resolvedOllamaUrl) payload.ollamaBaseUrl = resolvedOllamaUrl;
 
-      if (!res.ok || !res.body) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(detail || `Request failed (${res.status})`);
-      }
+        if (reasoningRef.current) payload.reasoning = reasoningRef.current;
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      const ndjson = isNdjsonStream(res.headers.get("Content-Type"));
-      let lineBuffer = "";
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify(payload),
+        });
 
-      while (true) {
-        if (isStale()) {
-          await reader.cancel().catch(() => {});
-          return;
+        if (!res.ok || !res.body) {
+          const detail = await res.text().catch(() => "");
+          throw new Error(detail || `Request failed (${res.status})`);
         }
 
-        const { value, done } = await reader.read();
-        if (done) break;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        const ndjson = isNdjsonStream(
+          res.headers.get("Content-Type"),
+          Boolean(memoryEnabledRef.current),
+        );
+        let lineBuffer = "";
+        let roundContent = "";
+        let roundReasoning = "";
+        const toolCalls: CompletedToolCall[] = [];
 
-        const chunk = decoder.decode(value, { stream: true });
-        if (!chunk) continue;
-
-        if (ndjson) {
-          lineBuffer += chunk;
-          const lines = lineBuffer.split("\n");
-          lineBuffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            const part = parseStreamLine(line);
-            if (!part) continue;
-            applyPart(part);
+        const applyRoundPart = (part: StreamPart) => {
+          if (part.p === "tool_call") {
+            toolCalls.push({
+              id: part.id,
+              name: part.name,
+              arguments: part.arguments,
+            });
+            return;
           }
-        } else {
-          accumulated += chunk;
+          if (part.p === "reasoning") {
+            if (!reasoningStartedAt) reasoningStartedAt = Date.now();
+            roundReasoning += part.t;
+          } else {
+            if (reasoningStartedAt && reasoningDurationMs === undefined) {
+              reasoningDurationMs = Date.now() - reasoningStartedAt;
+            }
+            roundContent += part.t;
+          }
+          accumulatedReasoning += part.p === "reasoning" ? part.t : "";
+          accumulated += part.p === "content" ? part.t : "";
           scheduleAssistantUi();
-        }
-      }
+        };
 
-      if (ndjson && lineBuffer.trim()) {
-        const part = parseStreamLine(lineBuffer);
-        if (part) applyPart(part);
+        while (true) {
+          if (isStale()) {
+            await reader.cancel().catch(() => {});
+            return;
+          }
+
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          if (!chunk) continue;
+
+          if (ndjson) {
+            lineBuffer += chunk;
+            const lines = lineBuffer.split("\n");
+            lineBuffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              const part = parseStreamLine(line);
+              if (!part) continue;
+              applyRoundPart(part);
+            }
+          } else {
+            roundContent += chunk;
+            accumulated += chunk;
+            scheduleAssistantUi();
+          }
+        }
+
+        if (ndjson && lineBuffer.trim()) {
+          const part = parseStreamLine(lineBuffer);
+          if (part) applyRoundPart(part);
+        }
+
+        if (toolCalls.length === 0 || toolRound === MAX_TOOL_ROUNDS) break;
+
+        const saveMemory = onSaveMemoryRef.current;
+        const toolResults: ApiPayloadMessage[] = toolCalls.map((call) => {
+          if (call.name === SAVE_MEMORY_TOOL_NAME && saveMemory) {
+            return {
+              role: "tool",
+              tool_call_id: call.id,
+              content: executeSaveMemoryTool(call.arguments, saveMemory),
+            };
+          }
+          return {
+            role: "tool",
+            tool_call_id: call.id,
+            content: "Unsupported tool.",
+          };
+        });
+
+        followUpMessages = [
+          ...followUpMessages,
+          {
+            role: "assistant",
+            content: roundContent || null,
+            tool_calls: toolCalls.map(toWireToolCall),
+          },
+          ...toolResults,
+        ];
+        toolRound += 1;
       }
 
       if (

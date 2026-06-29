@@ -169,7 +169,7 @@ Code should mostly explain itself. Comment non-obvious business logic, streaming
 ## Streaming protocol
 
 - **Plain text stream:** default; each chunk is `delta.content` UTF-8
-- **NDJSON stream** (`Content-Type: application/x-ndjson`): one JSON object per line: `{ "p": "content" | "reasoning", "t": "…" }`
+- **NDJSON stream** (`Content-Type: application/x-ndjson`): one JSON object per line: `{ "p": "content" | "reasoning", "t": "…" }` or `{ "p": "tool_call", "id", "name", "arguments" }` when memory tools are enabled
 - Client parsing lives in `use-chat.ts`; server encoding in `chat/route.ts`
 - Do not introduce a third framing format without strong reason
 
@@ -254,6 +254,7 @@ Example (too much):
 | Conversation list / titles | `src/hooks/use-conversations.ts`, `src/lib/generate-title.ts` |
 | Sidebar open / docked layout | `src/hooks/use-sidebar-open.ts`, `src/components/chat/sidebar.tsx`, `src/components/chat/chat.tsx` — docked on `md+` with persisted open state (`openchat:sidebar-open`); mobile stays overlay drawer |
 | User settings | `src/hooks/use-settings.ts`, `src/lib/storage.ts` |
+| Agent memory | `src/hooks/use-memories.ts`, `src/lib/memory-tools.ts`, `src/components/chat/memory-settings.tsx` — localStorage `openchat:memories`; injected via `buildSystemPrompt`; main model gets `save_memory` tool when enabled (client executes tool, follow-up round in `use-chat.ts`) |
 | Attachment blobs (IDB) | `src/lib/attachment-store.ts`, `src/hooks/use-attachment-blob.ts` |
 | Assistant message rendering | `src/components/markdown.tsx`, `src/components/chat/message.tsx` |
 | Attachments | `src/lib/attachments.ts`, `src/hooks/use-attachments.ts` |

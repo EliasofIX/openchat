@@ -15,6 +15,7 @@ import { useConversations } from "@/hooks/use-conversations";
 import { useSidebarOpen } from "@/hooks/use-sidebar-open";
 import { useColorAccent } from "@/hooks/use-color-accent";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
+import { useMemories } from "@/hooks/use-memories";
 import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
 import { getActiveModel } from "@/lib/providers";
 import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
@@ -36,8 +37,9 @@ export function Chat() {
 
   const conv = useConversations();
   const settingsHook = useSettings();
+  const memoriesHook = useMemories();
   useColorAccent(settingsHook.settings.colorAccent, settingsHook.hydrated);
-  const systemPrompt = buildSystemPrompt(settingsHook.settings);
+  const systemPrompt = buildSystemPrompt(settingsHook.settings, memoriesHook.memories);
   const settingsRef = useRef(settingsHook.settings);
   const convRef = useRef(conv);
   const lastUpsertRef = useRef<{ id: string; aiTitleGenerated: boolean } | null>(null);
@@ -57,6 +59,8 @@ export function Chat() {
     apiKey: settingsHook.settings.openRouterApiKey,
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
+    memoryEnabled: settingsHook.settings.memory.enabled,
+    onSaveMemory: (content) => memoriesHook.add(content, "agent"),
     onFinish: (_msg, all) => {
       const saved = lastUpsertRef.current;
       void convRef.current.maybeGenerateTitle(
@@ -158,6 +162,9 @@ export function Chat() {
             onOpenChange={setSettingsOpen}
             settings={settingsHook.settings}
             onSave={settingsHook.update}
+            memories={memoriesHook.memories}
+            onAddMemory={memoriesHook.add}
+            onRemoveMemory={memoriesHook.remove}
             initialTab={settingsTab}
           />
         )}

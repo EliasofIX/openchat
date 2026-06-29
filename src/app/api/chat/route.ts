@@ -9,7 +9,14 @@ import {
   createAiClient,
   type ChatCompletionDelta,
   type ChatMessage,
+  type ToolCall,
 } from "@/lib/ai-client";
+import {
+  createToolCallAccumulator,
+  MEMORY_TOOLS,
+  toWireToolCall,
+  type CompletedToolCall,
+} from "@/lib/memory-tools";
 import {
   buildOpenRouterReasoning,
   hermesReasoningSystemDirective,
@@ -37,9 +44,11 @@ type ContentPart =
   | { type: "image_url"; image_url: { url: string } };
 
 type ApiChatMessage = {
-  role: "system" | "user" | "assistant";
-  content: string | ContentPart[];
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | ContentPart[] | null;
   reasoning?: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 };
 
 type ChatRequest = {
@@ -50,6 +59,7 @@ type ChatRequest = {
   apiKey?: string;
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
+  memoryEnabled?: boolean;
 };
 
 type StreamPart = "content" | "reasoning";
@@ -58,6 +68,23 @@ const textEncoder = new TextEncoder();
 
 function encodePart(part: StreamPart, text: string): Uint8Array {
   return textEncoder.encode(`${JSON.stringify({ p: part, t: text })}\n`);
+}
+
+function encodeToolCalls(calls: CompletedToolCall[]): Uint8Array[] {
+  return calls.map((call) =>
+    textEncoder.encode(`${JSON.stringify(toWireToolCall(call))}\n`),
+  );
+}
+
+function toUpstreamMessage(message: ApiChatMessage): ChatMessage {
+  const base: ChatMessage = {
+    role: message.role,
+    content: message.content ?? null,
+  };
+  if (message.reasoning) base.reasoning = message.reasoning;
+  if (message.tool_calls?.length) base.tool_calls = message.tool_calls;
+  if (message.tool_call_id) base.tool_call_id = message.tool_call_id;
+  return base;
 }
 
 function extractDeltaReasoning(delta: ChatCompletionDelta | undefined | null): string {
@@ -139,16 +166,18 @@ export async function POST(req: Request) {
     ollamaBaseUrl,
     reasoning,
     provider: providerInput,
+    memoryEnabled,
   } = body;
   const provider = resolveProvider(providerInput);
+  const toolsEnabled = Boolean(memoryEnabled);
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response("`messages` must be a non-empty array.", { status: 400 });
   }
 
   const fullMessages: ChatMessage[] = systemPrompt
-    ? [{ role: "system", content: systemPrompt }, ...messages]
-    : messages;
+    ? [{ role: "system", content: systemPrompt }, ...messages.map(toUpstreamMessage)]
+    : messages.map(toUpstreamMessage);
 
   const resolvedModel =
     provider === "ollama"
@@ -162,7 +191,11 @@ export async function POST(req: Request) {
   );
 
   const streamReasoning = shouldStreamReasoning(reasoning);
+  const useNdjson = streamReasoning || toolsEnabled;
   const showReasoningInStream = Boolean(reasoning?.showInResponse);
+  const toolParams = toolsEnabled
+    ? { tools: MEMORY_TOOLS, tool_choice: "auto" as const }
+    : {};
   const upstreamAbort = new AbortController();
   const onClientAbort = () => upstreamAbort.abort();
   if (req.signal.aborted) upstreamAbort.abort();
@@ -191,6 +224,7 @@ export async function POST(req: Request) {
           model: resolvedModel,
           messages: upstreamMessages,
           ...(reasoning?.enabled ? { think: true } : {}),
+          ...toolParams,
         },
         streamSignal,
       );
@@ -217,6 +251,7 @@ export async function POST(req: Request) {
           model: resolvedModel,
           messages: upstreamMessages,
           ...(reasoningParam ? { reasoning: reasoningParam } : {}),
+          ...toolParams,
         },
         streamSignal,
       );
@@ -230,12 +265,16 @@ export async function POST(req: Request) {
     async start(controller) {
       const tagSplitter = streamReasoning ? createThinkingTagSplitter() : null;
       const plainSplitter = streamReasoning ? createPlainReasoningSplitter() : null;
+      const toolCalls = toolsEnabled ? createToolCallAccumulator() : null;
       let sawDedicatedReasoning = false;
 
       try {
         for await (const chunk of upstream) {
           if (upstreamAbort.signal.aborted) break;
-          const delta = chunk.choices[0]?.delta;
+          const choice = chunk.choices[0];
+          const delta = choice?.delta;
+          toolCalls?.push(delta?.tool_calls);
+
           let reasoningText = extractDeltaReasoning(delta);
           let contentText = delta?.content ?? "";
 
@@ -253,7 +292,7 @@ export async function POST(req: Request) {
             contentText = split.content;
           }
 
-          if (streamReasoning) {
+          if (useNdjson) {
             if (reasoningText && showReasoningInStream) {
               controller.enqueue(encodePart("reasoning", reasoningText));
             }
@@ -294,6 +333,12 @@ export async function POST(req: Request) {
           if (tailContent) controller.enqueue(encodePart("content", tailContent));
         }
 
+        if (toolCalls) {
+          for (const encoded of encodeToolCalls(toolCalls.flush())) {
+            controller.enqueue(encoded);
+          }
+        }
+
         controller.close();
       } catch (err) {
         if ((err as Error).name === "AbortError" || upstreamAbort.signal.aborted) {
@@ -311,7 +356,7 @@ export async function POST(req: Request) {
 
   return new Response(stream, {
     headers: {
-      "Content-Type": streamReasoning
+      "Content-Type": useNdjson
         ? "application/x-ndjson; charset=utf-8"
         : "text/plain; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",

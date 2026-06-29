@@ -62,6 +62,20 @@ export type TitleGenerationSettings = {
   model: string;
 };
 
+export type MemorySource = "user" | "agent";
+
+export type Memory = {
+  id: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  source: MemorySource;
+};
+
+export type MemorySettings = {
+  enabled: boolean;
+};
+
 export type UserSettings = {
   name: string;
   customInstructions: string;
@@ -74,4 +88,5 @@ export type UserSettings = {
   ollamaModel: string;
   reasoning: ReasoningSettings;
   titleGeneration: TitleGenerationSettings;
+  memory: MemorySettings;
 };

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { UserSettings } from "@/lib/types";
+import type { Memory, UserSettings } from "@/lib/types";
+import { memoryToolSystemHint } from "@/lib/memory-tools";
 import { DEFAULT_SETTINGS, storage } from "@/lib/storage";
 
 export function useSettings() {
@@ -24,6 +25,7 @@ export function useSettings() {
         titleGeneration: patch.titleGeneration
           ? { ...prev.titleGeneration, ...patch.titleGeneration }
           : prev.titleGeneration,
+        memory: patch.memory ? { ...prev.memory, ...patch.memory } : prev.memory,
       };
       storage.saveSettings(next);
       return next;
@@ -34,12 +36,27 @@ export function useSettings() {
 }
 
 // Build the system prompt sent to the model from the user's settings.
-export function buildSystemPrompt(s: UserSettings): string | undefined {
+export function buildSystemPrompt(
+  s: UserSettings,
+  memories: Memory[] = [],
+): string | undefined {
   const lines: string[] = [];
   if (s.name.trim()) lines.push(`The user's name is ${s.name.trim()}.`);
   if (s.customInstructions.trim()) {
     lines.push("The user has provided the following custom instructions:");
     lines.push(s.customInstructions.trim());
+  }
+  if (s.memory.enabled) {
+    lines.push(memoryToolSystemHint());
+  }
+  if (s.memory.enabled && memories.length > 0) {
+    lines.push(
+      "The following are things you should remember about the user across conversations:",
+    );
+    for (const memory of memories) {
+      const text = memory.content.trim();
+      if (text) lines.push(`- ${text}`);
+    }
   }
   return lines.length ? lines.join("\n\n") : undefined;
 }

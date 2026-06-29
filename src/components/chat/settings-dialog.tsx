@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { applyColorAccent } from "@/lib/color-accent";
 import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
-import type { ReasoningEffort, TitleGenerationSettings, UserSettings } from "@/lib/types";
+import type { Memory, ReasoningEffort, TitleGenerationSettings, UserSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ColorAccentPicker } from "./color-accent-picker";
+import { MemorySettings } from "./memory-settings";
 import {
   SettingsField,
   SettingsSection,
@@ -36,6 +37,9 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   settings: UserSettings;
   onSave: (patch: Partial<UserSettings>) => void;
+  memories: Memory[];
+  onAddMemory: (content: string) => boolean;
+  onRemoveMemory: (id: string) => void;
   initialTab?: SettingsTab;
 };
 
@@ -44,6 +48,9 @@ export function SettingsDialog({
   onOpenChange,
   settings,
   onSave,
+  memories,
+  onAddMemory,
+  onRemoveMemory,
   initialTab = "general",
 }: Props) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -61,6 +68,7 @@ export function SettingsDialog({
   const [titleGeneration, setTitleGeneration] = useState<TitleGenerationSettings>(
     settings.titleGeneration,
   );
+  const [memorySettings, setMemorySettings] = useState(settings.memory);
   const [colorAccent, setColorAccent] = useState<string | null>(settings.colorAccent);
   const previewAccentRef = useRef<string | null>(settings.colorAccent);
 
@@ -79,6 +87,7 @@ export function SettingsDialog({
       setShowReasoning(settings.reasoning.showInResponse);
       setCollapseReasoning(settings.reasoning.collapseByDefault);
       setTitleGeneration(settings.titleGeneration);
+      setMemorySettings(settings.memory);
       setColorAccent(settings.colorAccent);
       previewAccentRef.current = settings.colorAccent;
     }
@@ -111,6 +120,7 @@ export function SettingsDialog({
         collapseByDefault: collapseReasoning,
       },
       titleGeneration,
+      memory: memorySettings,
     });
     previewAccentRef.current = colorAccent;
     onOpenChange(false);
@@ -174,6 +184,18 @@ export function SettingsDialog({
                   />
                 </SettingsField>
               </SettingsSection>
+
+              <Separator />
+
+              <MemorySettings
+                memorySettings={memorySettings}
+                onMemorySettingsChange={(patch) =>
+                  setMemorySettings((prev) => ({ ...prev, ...patch }))
+                }
+                memories={memories}
+                onAddMemory={onAddMemory}
+                onRemoveMemory={onRemoveMemory}
+              />
 
               <Separator />
 

@@ -1,13 +1,28 @@
-export type ChatRole = "system" | "user" | "assistant";
+export type ChatRole = "system" | "user" | "assistant" | "tool";
 
 export type ChatContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
+export type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
+export type ToolCallDelta = {
+  index?: number;
+  id?: string;
+  type?: string;
+  function?: { name?: string; arguments?: string };
+};
+
 export type ChatMessage = {
   role: ChatRole;
-  content: string | ChatContentPart[];
+  content?: string | ChatContentPart[] | null;
   reasoning?: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 };
 
 export type ReasoningDetail = {
@@ -22,6 +37,7 @@ export type ChatCompletionDelta = {
   reasoning_content?: string;
   thinking?: string;
   reasoning_details?: ReasoningDetail[];
+  tool_calls?: ToolCallDelta[];
 };
 
 export type ChatCompletionChunk = {
@@ -39,6 +55,15 @@ export type ChatCompletionResponse = {
   }>;
 };
 
+export type ChatToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
 export type ChatCompletionRequest = {
   model: string;
   messages: ChatMessage[];
@@ -46,6 +71,8 @@ export type ChatCompletionRequest = {
   reasoning?: unknown;
   include_reasoning?: boolean;
   think?: boolean;
+  tools?: ChatToolDefinition[];
+  tool_choice?: "auto" | "none";
 };
 
 export type AiClientOptions = {

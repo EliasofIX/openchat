@@ -7,7 +7,7 @@ import {
   deleteBlobs,
   putBlobsFromMessages,
 } from "@/lib/attachment-store";
-import type { Conversation, Message, MessageAttachment, UserSettings } from "./types";
+import type { Conversation, Memory, Message, MessageAttachment, UserSettings } from "./types";
 
 const KEY_LEGACY_CONVERSATIONS = "openchat:conversations";
 const KEY_CONV_INDEX = "openchat:conv-index";
@@ -15,6 +15,9 @@ const KEY_CONV_PREFIX = "openchat:conv:";
 const KEY_SETTINGS = "openchat:settings";
 const KEY_ACTIVE = "openchat:active-conversation";
 const KEY_SIDEBAR_OPEN = "openchat:sidebar-open";
+const KEY_MEMORIES = "openchat:memories";
+
+export const MAX_MEMORIES = 50;
 
 export type StorageError = "quota_exceeded";
 
@@ -67,6 +70,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
     provider: "openrouter",
     model: "",
   },
+  memory: {
+    enabled: true,
+  },
 };
 
 const LEGACY_DEFAULT_TITLE_MODEL = "google/gemini-2.0-flash-001";
@@ -114,7 +120,33 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
       ...stored.reasoning,
     },
     titleGeneration,
+    memory: {
+      ...DEFAULT_SETTINGS.memory,
+      ...stored.memory,
+    },
   };
+}
+
+function normalizeMemories(raw: unknown): Memory[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (item): item is Memory =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as Memory).id === "string" &&
+        typeof (item as Memory).content === "string",
+    )
+    .map((item) => ({
+      id: item.id,
+      content: item.content.trim().slice(0, 500),
+      createdAt: item.createdAt ?? Date.now(),
+      updatedAt: item.updatedAt ?? item.createdAt ?? Date.now(),
+      source: (item.source === "user" ? "user" : "agent") as Memory["source"],
+    }))
+    .filter((item) => item.content.length > 0)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_MEMORIES);
 }
 
 function safeParse<T>(raw: string | null, fallback: T): T {
@@ -284,5 +316,15 @@ export const storage = {
   saveSidebarOpen(open: boolean) {
     if (typeof window === "undefined") return;
     safeSetItem(KEY_SIDEBAR_OPEN, open ? "1" : "0");
+  },
+
+  loadMemories(): Memory[] {
+    if (typeof window === "undefined") return [];
+    return normalizeMemories(safeParse<unknown>(localStorage.getItem(KEY_MEMORIES), []));
+  },
+
+  saveMemories(memories: Memory[]) {
+    if (typeof window === "undefined") return;
+    safeSetItem(KEY_MEMORIES, JSON.stringify(normalizeMemories(memories)));
   },
 };
