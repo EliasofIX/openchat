@@ -6,7 +6,7 @@ import { Markdown } from "@/components/markdown-lazy";
 import { useAttachmentBlob } from "@/hooks/use-attachment-blob";
 import { ReasoningPanel } from "./reasoning-panel";
 import { MemoryNoticeRow } from "./memory-notice-row";
-import { cn } from "@/lib/utils";
+import { cn, touchVisible } from "@/lib/utils";
 import type { Message, MessageAttachment } from "@/lib/types";
 
 function messagePropsEqual(
@@ -138,7 +138,7 @@ function AssistantMessage({
       )}
 
       {hasContent && !isStreaming && (
-        <div className="mt-1.5 -ml-1 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className={cn("mt-1.5 -ml-1 flex h-6 items-center gap-1", touchVisible)}>
           <button
             type="button"
             onClick={onCopy}

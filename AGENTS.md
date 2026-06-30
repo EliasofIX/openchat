@@ -114,6 +114,14 @@ To swap providers, edit the route (or `ai-completion.ts`), keep the same `Readab
 - Battery: keep `backgroundThrottling: true` and push a `power-mode` IPC signal (on-battery / hidden / minimized / blurred / screen-locked / suspended) that `electron/preload.js` turns into a `.low-power` class on `<html>`; `lock-screen`/`suspend` do **not** blur the window on AC power, so fold them into the low-power decision via an idle flag — wiring them as `powerMonitor` listeners is a no-op if the formula only checks battery/visibility/focus (a plugged-in Mac would keep compositing blur for a locked screen). gate GPU-heavy effects (glass `backdrop-filter`) and infinite CSS animations (the stream-cursor `animate-pulse`) behind it — Chromium only auto-throttles RAF and CSS animations when *hidden*, not when blurred-but-visible, so both must be cut manually. Renderer code may read that class to throttle JS too — `use-chat` coalesces stream re-renders from one-per-animation-frame (~60fps) to ~10fps in low-power. Only re-send `power-mode` when the value changes (a fresh value on every blur/focus/powerMonitor tick would force needless renderer style recalcs), but reset that cache on `did-finish-load` so a reloaded page re-syncs. Avoid `powerSaveBlocker` for idle UI and any polling that wakes the CPU. On macOS, set `NSSupportsAutomaticGraphicsSwitching: true` via `build.mac.extendInfo` so a dual-GPU MacBook keeps Open Chat on the integrated (low-power) GPU instead of spinning up the discrete one — the chat UI never needs it.
 - macOS frameless chrome: `titleBarStyle: "hiddenInset"` plus an `.electron-traffic-spacer` in the header (see `globals.css`). Set `--electron-safe-left` / `--electron-chrome-h` as **inline styles on `<html>`** from preload (and refine via `shell-chrome` IPC + `getWindowButtonPosition`), but **also** scope macOS fallbacks under `html.electron-macos` in CSS and re-apply inline vars from preload when `<html style>` changes — Next.js hydration replaces `<html class>` and can wipe inline chrome vars.
 
+### iOS Safari (mobile browser)
+
+- Chat shell is a **flex column** (header → scrollable `main` → composer), not an absolutely positioned composer over messages.
+- Keyboard offset comes from `useVisualViewport` (`--keyboard-offset` on `<html>`); safe areas from `viewportFit: cover` + `--safe-*` CSS vars in `globals.css`.
+- Composer padding uses `.oc-composer-pad`; message list uses `.oc-chat-scroll` (`overscroll-behavior: contain`).
+- Secondary actions use `touchVisible` / `touchVisibleItem` (`coarse:` variant) — never `group-hover` only. Composer textarea stays ≥16px on mobile (`text-base`, `md:text-[0.95rem]`) to avoid input zoom.
+- Tap targets bump to 44px on coarse pointers (`coarse:size-11`). Dialog open locks `document.body` overflow for iOS scroll bleed.
+
 ---
 
 ## Code style
@@ -250,6 +258,7 @@ Example (too much):
 | Task | Start here |
 | --- | --- |
 | Change streaming behavior | `src/hooks/use-chat.ts`, `src/app/api/chat/route.ts` |
+| iOS browser layout / keyboard | `src/components/chat/chat.tsx`, `src/hooks/use-visual-viewport.ts`, `src/app/globals.css` |
 | Add / change provider | `src/app/api/chat/route.ts`, `src/lib/ai-completion.ts` |
 | Conversation list / titles | `src/hooks/use-conversations.ts`, `src/lib/generate-title.ts` |
 | Sidebar open / docked layout | `src/hooks/use-sidebar-open.ts`, `src/components/chat/sidebar.tsx`, `src/components/chat/chat.tsx` — docked on `md+` with persisted open state (`openchat:sidebar-open`); mobile stays overlay drawer |

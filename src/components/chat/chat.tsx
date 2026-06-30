@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { PanelLeft, PanelLeftClose, SquarePen } from "@/components/icons";
 import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
@@ -14,6 +13,7 @@ import { useModelCapabilities } from "@/hooks/use-model-capabilities";
 import { useConversations } from "@/hooks/use-conversations";
 import { useSidebarOpen } from "@/hooks/use-sidebar-open";
 import { useColorAccent } from "@/hooks/use-color-accent";
+import { useVisualViewport } from "@/hooks/use-visual-viewport";
 import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
 import { useMemories } from "@/hooks/use-memories";
 import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
@@ -32,8 +32,11 @@ const Sidebar = dynamic(
   { ssr: false },
 );
 
+const SCROLL_STICK_THRESHOLD_PX = 80;
+
 export function Chat() {
   useLowPower();
+  useVisualViewport();
 
   const conv = useConversations();
   const settingsHook = useSettings();
@@ -43,6 +46,8 @@ export function Chat() {
   const settingsRef = useRef(settingsHook.settings);
   const convRef = useRef(conv);
   const lastUpsertRef = useRef<{ id: string; aiTitleGenerated: boolean } | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const stickToBottomRef = useRef(true);
 
   useEffect(() => {
     settingsRef.current = settingsHook.settings;
@@ -125,6 +130,7 @@ export function Chat() {
       const active = conv.conversations.find((c) => c.id === id);
       setMessages(active?.messages ?? []);
       setVisibleCount(VISIBLE_MESSAGE_LIMIT);
+      stickToBottomRef.current = true;
     }
   }, [conv.hydrated, conv.activeId, conv.conversations, setMessages]);
 
@@ -132,7 +138,22 @@ export function Chat() {
   const visibleMessages =
     hiddenCount > 0 ? chat.messages.slice(-visibleCount) : chat.messages;
 
+  const onMainScroll = () => {
+    const el = mainRef.current;
+    if (!el) return;
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_STICK_THRESHOLD_PX;
+  };
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    const el = mainRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chat.messages, chat.isStreaming, visibleCount]);
+
   const onSend = (text: string, files: MessageAttachment[]) => {
+    stickToBottomRef.current = true;
     chat.send(text, files);
   };
 
@@ -143,6 +164,7 @@ export function Chat() {
     attachmentsHook.clear();
     setComposerReset((n) => n + 1);
     setVisibleCount(VISIBLE_MESSAGE_LIMIT);
+    stickToBottomRef.current = true;
   };
 
   const showHeaderNewChat = !sidebar.open || sidebar.variant === "overlay";
@@ -163,7 +185,7 @@ export function Chat() {
         />
       )}
 
-      <div className="relative flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {settingsOpen && (
           <SettingsDialog
             open={settingsOpen}
@@ -179,25 +201,7 @@ export function Chat() {
           />
         )}
 
-        {storageError === "quota_exceeded" && (
-          <div className="absolute inset-x-0 top-12 z-30 mx-auto max-w-3xl px-4">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <span>Storage is full. Oldest conversations may have been removed.</span>
-              <button
-                type="button"
-                onClick={() => {
-                  clearStorageError();
-                  setStorageError(null);
-                }}
-                className="shrink-0 rounded px-2 py-0.5 text-xs hover:bg-destructive/10"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        )}
-
-        <header className="electron-header absolute inset-x-0 top-0 z-10 flex items-center">
+        <header className="electron-header z-10 flex shrink-0 items-center">
           <div className="electron-traffic-spacer" aria-hidden />
           <div className="electron-no-drag flex items-center gap-0.5">
             <IconButton
@@ -217,11 +221,33 @@ export function Chat() {
           <div className="electron-chrome-drag flex-1 self-stretch" aria-hidden="true" />
         </header>
 
-        <main className="h-full overflow-y-auto">
+        {storageError === "quota_exceeded" && (
+          <div className="shrink-0 px-4 pb-2">
+            <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <span>Storage is full. Oldest conversations may have been removed.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  clearStorageError();
+                  setStorageError(null);
+                }}
+                className="shrink-0 rounded px-2 py-0.5 text-xs hover:bg-destructive/10"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        <main
+          ref={mainRef}
+          onScroll={onMainScroll}
+          className="oc-chat-scroll min-h-0 flex-1 overflow-y-auto"
+        >
           {chat.messages.length === 0 ? (
             <EmptyState name={settingsHook.settings.name} />
           ) : (
-            <div className="mx-auto w-full max-w-3xl px-4 pt-16 pb-44">
+            <div className="mx-auto w-full max-w-3xl px-4 py-4">
               <div className="space-y-6">
                 {hiddenCount > 0 && (
                   <div className="flex justify-center">
@@ -282,27 +308,8 @@ export function Chat() {
           onStop={chat.stop}
           resetSignal={composerReset}
         />
-
-        <ChatDisclaimer />
       </div>
     </div>
-  );
-}
-
-function ChatDisclaimer() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <p className="pointer-events-none fixed inset-x-0 bottom-0 z-50 pb-2 text-center text-[10px] text-muted-foreground">
-      The model can make mistakes. Verify important information.
-    </p>,
-    document.body,
   );
 }
 
@@ -328,7 +335,7 @@ function IconButton({
       aria-expanded={ariaExpanded}
       className={cn(
         "grid place-items-center rounded-lg text-muted-foreground transition",
-        compact ? "size-8" : "size-9",
+        compact ? "size-8 coarse:size-11" : "size-9 coarse:size-11",
         "hover:bg-muted hover:text-foreground",
       )}
     >
@@ -340,7 +347,7 @@ function IconButton({
 function EmptyState({ name }: { name: string }) {
   const greeting = name.trim() ? `Hi ${name.trim()}.` : "Hello.";
   return (
-    <div className="flex h-full items-center justify-center px-6">
+    <div className="flex h-full min-h-[40dvh] items-center justify-center px-6">
       <div className="text-center">
         <h1 className="text-2xl font-medium tracking-tight [html.has-color-accent_&]:text-primary">
           {greeting}

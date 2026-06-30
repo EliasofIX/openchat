@@ -4,7 +4,7 @@ import { Settings, SquarePen, Trash2, X } from "@/components/icons";
 import type { SidebarVariant } from "@/hooks/use-sidebar-open";
 import { SIDEBAR_WIDTH_PX } from "@/lib/constants";
 import type { Conversation } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, touchVisibleItem } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -69,9 +69,9 @@ function ConversationList({
             }}
             aria-label="Delete conversation"
             className={cn(
-              "absolute right-1.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md",
-              "text-muted-foreground opacity-0 transition group-hover/item:opacity-100",
-              "hover:bg-sidebar-accent hover:text-foreground",
+              "absolute right-1.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md coarse:size-11",
+              "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
+              touchVisibleItem,
             )}
           >
             <Trash2 size={13} />
@@ -117,14 +117,14 @@ function SidebarBody({
           type="button"
           aria-label="Close sidebar"
           onClick={() => onOpenChange(false)}
-          className="grid size-8 place-items-center rounded-md text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
+          className="grid size-8 place-items-center rounded-md text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground coarse:size-11"
         >
           <X size={16} />
         </button>
       </div>
     )}
 
-    <div className="min-h-0 flex-1 overflow-y-auto p-2">
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
       <ConversationList
         conversations={conversations}
         activeId={activeId}
@@ -199,13 +199,14 @@ export function Sidebar({
         type="button"
         aria-label="Close sidebar"
         onClick={() => onOpenChange(false)}
-        className="fixed inset-0 z-30 bg-transparent"
+        className="fixed inset-0 z-30 bg-black/40"
       />
       <aside
         className={cn(
           "electron-sidebar oc-animate-slide-in-left fixed left-0 top-0 z-40 flex h-dvh flex-col shadow-lg",
           "border-y-0 border-l-0 border-r border-sidebar-border bg-sidebar",
           "text-sidebar-foreground outline-none",
+          "pt-[var(--safe-top)] pb-[var(--safe-bottom)]",
         )}
         style={{ width: `min(86vw, ${SIDEBAR_WIDTH_PX}px)` }}
       >

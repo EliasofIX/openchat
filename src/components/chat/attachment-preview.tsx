@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, FileCode2, FileText, Loader2, X } from "@/components/icons";
-import { cn } from "@/lib/utils";
+import { cn, touchVisible } from "@/lib/utils";
 import type { PendingAttachment } from "@/lib/types";
 
 type Props = {
@@ -90,8 +90,9 @@ function AttachmentChip({
         onClick={onRemove}
         aria-label={`Remove ${att.name}`}
         className={cn(
-          "grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground",
-          "opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100",
+          "grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground coarse:size-8",
+          "transition hover:bg-muted hover:text-foreground",
+          touchVisible,
           (isUnsupported || isError) && "opacity-100",
         )}
       >

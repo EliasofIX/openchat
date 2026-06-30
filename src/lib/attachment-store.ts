@@ -18,7 +18,9 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
-    return Promise.reject(new Error("IndexedDB is not available"));
+    return Promise.reject(
+      new Error("Attachment storage is unavailable (e.g. private browsing)."),
+    );
   }
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {

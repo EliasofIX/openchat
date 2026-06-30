@@ -3,6 +3,7 @@
 @import "./tokens.css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant coarse (@media (hover: none) and (pointer: coarse));
 
 @theme inline {
   --color-background: var(--background);
@@ -49,6 +50,11 @@
 }
 
 :root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --keyboard-offset: 0px;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -126,7 +132,17 @@
   }
   html {
     @apply font-sans;
+    overscroll-behavior: none;
   }
+}
+
+.oc-chat-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.oc-composer-pad {
+  padding-bottom: calc(max(0.75rem, var(--safe-bottom)) + var(--keyboard-offset, 0px));
 }
 
 /* KaTeX — theme-aware math rendering */
@@ -163,7 +179,9 @@
 /* Electron frameless chrome — web keeps the plain header; macOS insets live under
    html.electron-macos so a wiped inline var still leaves room for traffic lights. */
 .electron-header {
-  padding: 0.5rem;
+  padding: max(0.5rem, var(--safe-top)) 0.5rem 0.5rem;
+  padding-left: max(0.5rem, var(--safe-left));
+  padding-right: max(0.5rem, var(--safe-right));
   height: auto;
 }
 

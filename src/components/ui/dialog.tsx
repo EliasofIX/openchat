@@ -23,6 +23,15 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   return (
     <dialog
       ref={ref}

@@ -100,7 +100,7 @@ export function ChatInput({
           aria-label="Attach files"
           title="Attach images, PDFs, or code files"
           className={cn(
-            "mb-0.5 grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition",
+            "mb-0.5 grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition coarse:size-11",
             "hover:bg-accent hover:text-foreground disabled:opacity-40",
           )}
         >
@@ -113,11 +113,16 @@ export function ChatInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKey}
           onPaste={onPaste}
+          onFocus={(e) => {
+            requestAnimationFrame(() => {
+              e.currentTarget.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            });
+          }}
           placeholder="Message…"
           rows={1}
           disabled={disabled}
           className={cn(
-            "flex-1 resize-none bg-transparent px-1.5 py-1.5 text-[0.95rem] leading-6 text-foreground outline-none",
+            "flex-1 resize-none bg-transparent px-1.5 py-1.5 text-base leading-6 text-foreground outline-none md:text-[0.95rem]",
             "placeholder:text-muted-foreground",
           )}
         />
@@ -127,7 +132,7 @@ export function ChatInput({
             type="button"
             onClick={onStop}
             aria-label="Stop generating"
-            className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90"
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90 coarse:size-11"
           >
             <Square size={14} fill="currentColor" />
           </button>
@@ -137,7 +142,7 @@ export function ChatInput({
             disabled={!canSend}
             aria-label="Send message"
             className={cn(
-              "grid size-9 shrink-0 place-items-center rounded-full transition",
+              "grid size-9 shrink-0 place-items-center rounded-full transition coarse:size-11",
               canSend
                 ? "bg-primary text-primary-foreground hover:opacity-90"
                 : "bg-muted text-muted-foreground cursor-not-allowed",
