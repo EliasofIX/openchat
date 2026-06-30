@@ -4,7 +4,7 @@ import { memo, useEffect, useState } from "react";
 import { Check, ChevronDown, Copy } from "@/components/icons";
 import { Markdown } from "@/components/markdown-lazy";
 import { formatDuration } from "@/lib/reasoning";
-import { cn } from "@/lib/utils";
+import { cn, touchVisible } from "@/lib/utils";
 
 type Props = {
   content: string;
@@ -76,8 +76,9 @@ function ReasoningPanelInner({ content, isThinking, durationMs, defaultOpen }: P
           onClick={onCopy}
           aria-label="Copy reasoning"
           className={cn(
-            "grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity",
-            "hover:bg-muted hover:text-foreground group-hover:opacity-100",
+            "grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-opacity coarse:size-8",
+            "hover:bg-muted hover:text-foreground",
+            touchVisible,
           )}
         >
           {copied ? <Check size={11} /> : <Copy size={11} />}

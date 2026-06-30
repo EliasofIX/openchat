@@ -172,8 +172,9 @@ export function ProvidersSettings({
             label="Base URL"
             hint={
               <span>
-                Default is <code className="text-[10px]">http://localhost:11434</code>. Change this
-                if Ollama runs on another host or port.
+                Default is <code className="text-[10px]">http://localhost:11434</code>. On a phone
+                or tablet, use a URL reachable from this device (e.g.{" "}
+                <code className="text-[10px]">http://192.168.1.10:11434</code>).
               </span>
             }
           >

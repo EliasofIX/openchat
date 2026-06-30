@@ -46,9 +46,9 @@ export function MemoryNoticeRow({ notice, onOpenMemorySettings }: Props) {
           type="button"
           onClick={onOpenMemorySettings}
           className={cn(
-            "ml-1 shrink-0 opacity-0 transition-opacity",
+            "ml-1 shrink-0 transition-opacity coarse:opacity-100",
             "hover:text-foreground hover:underline hover:underline-offset-2",
-            "group-hover:opacity-100 focus-visible:opacity-100",
+            "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
           )}
         >
           Memory

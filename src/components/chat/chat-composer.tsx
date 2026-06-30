@@ -101,8 +101,8 @@ export function ChatComposer({
   const activeModel = getActiveModel(settings);
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-3 pb-7">
-      <div className="pointer-events-auto mx-auto w-full max-w-3xl px-4">
+    <div className="oc-composer-pad z-20 shrink-0 pt-3">
+      <div className="mx-auto w-full max-w-3xl px-4">
         {settings.reasoning.enabled ? (
           <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
             <span
@@ -178,6 +178,9 @@ export function ChatComposer({
           isProcessingAttachments={attachmentsHook.isProcessing}
           hasUnsupportedAttachments={attachmentsHook.hasUnsupported}
         />
+        <p className="pointer-events-none pt-2 text-center text-[10px] text-muted-foreground">
+          The model can make mistakes. Verify important information.
+        </p>
       </div>
     </div>
   );
