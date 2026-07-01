@@ -19,6 +19,7 @@ import {
   isMemoryToolCallWire,
   mergeMemoryNotice,
   memoryNoticeFromSave,
+  memoryNoticeFromToolRoundLimit,
   parseSaveMemoryArguments,
   SAVE_MEMORY_TOOL_NAME,
   type CompletedToolCall,
@@ -330,9 +331,9 @@ export function useChat(options: UseChatOptions = {}) {
 
       const baseApiMessages = hydratedBase.map(toApiMessage);
       let followUpMessages: ApiPayloadMessage[] = [];
-      let toolRound = 0;
+      let toolExecutions = 0;
 
-      while (toolRound <= MAX_TOOL_ROUNDS) {
+      while (true) {
         if (isStale()) return;
 
         const payload: Record<string, unknown> = {
@@ -434,7 +435,18 @@ export function useChat(options: UseChatOptions = {}) {
           if (part) applyRoundPart(part);
         }
 
-        if (toolCalls.length === 0 || toolRound === MAX_TOOL_ROUNDS) break;
+        if (toolCalls.length === 0) break;
+
+        if (toolExecutions >= MAX_TOOL_ROUNDS) {
+          memoryNotice = mergeMemoryNotice(
+            memoryNotice,
+            memoryNoticeFromToolRoundLimit(),
+          );
+          scheduleAssistantUi();
+          break;
+        }
+
+        if (isStale()) return;
 
         const saveMemory = onSaveMemoryRef.current;
         const toolResults: ApiPayloadMessage[] = toolCalls.map((call) => {
@@ -468,7 +480,7 @@ export function useChat(options: UseChatOptions = {}) {
           },
           ...toolResults,
         ];
-        toolRound += 1;
+        toolExecutions += 1;
       }
 
       if (

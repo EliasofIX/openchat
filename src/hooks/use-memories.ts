@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_MEMORIES, storage } from "@/lib/storage";
+import {
+  capMemories,
+  KEY_MEMORIES,
+  storage,
+} from "@/lib/storage";
 import type { SaveMemoryResult } from "@/lib/memory-tools";
 import type { Memory } from "@/lib/types";
 
@@ -12,19 +16,6 @@ function makeId() {
 function isDuplicate(content: string, memories: Memory[]): boolean {
   const normalized = content.trim().toLowerCase();
   return memories.some((m) => m.content.trim().toLowerCase() === normalized);
-}
-
-function trimToCap(memories: Memory[]): Memory[] {
-  if (memories.length <= MAX_MEMORIES) return memories;
-
-  const sorted = [...memories].sort((a, b) => b.updatedAt - a.updatedAt);
-  const autoEvicted = sorted
-    .slice(MAX_MEMORIES)
-    .filter((m) => m.source === "agent")
-    .map((m) => m.id);
-  if (autoEvicted.length === 0) return sorted.slice(0, MAX_MEMORIES);
-
-  return sorted.filter((m) => !autoEvicted.includes(m.id)).slice(0, MAX_MEMORIES);
 }
 
 export function useMemories() {
@@ -41,11 +32,29 @@ export function useMemories() {
     setHydrated(true);
   }, []);
 
-  const persist = useCallback((next: Memory[]) => {
-    const normalized = trimToCap(next);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== KEY_MEMORIES) return;
+      const loaded = storage.loadMemories();
+      memoriesRef.current = loaded;
+      setMemories(loaded);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const persist = useCallback((next: Memory[]): boolean => {
+    const normalized = capMemories(next);
+    const previous = memoriesRef.current;
     memoriesRef.current = normalized;
     setMemories(normalized);
-    storage.saveMemories(normalized);
+    const ok = storage.saveMemories(normalized);
+    if (!ok) {
+      memoriesRef.current = previous;
+      setMemories(previous);
+      return false;
+    }
+    return true;
   }, []);
 
   const tryAdd = useCallback(
@@ -62,10 +71,10 @@ export function useMemories() {
         updatedAt: now,
         source,
       };
-      const normalized = trimToCap([entry, ...memoriesRef.current]);
+      const normalized = capMemories([entry, ...memoriesRef.current]);
       if (!normalized.some((m) => m.id === entry.id)) return "full";
 
-      persist(normalized);
+      if (!persist(normalized)) return "storage_failed";
       return "saved";
     },
     [persist],
@@ -93,12 +102,11 @@ export function useMemories() {
       if (isDuplicate(trimmed, others)) return false;
 
       const now = Date.now();
-      persist(
+      return persist(
         memoriesRef.current.map((m) =>
           m.id === id ? { ...m, content: trimmed, updatedAt: now } : m,
         ),
       );
-      return true;
     },
     [persist],
   );

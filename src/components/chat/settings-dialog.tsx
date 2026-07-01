@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { applyColorAccent } from "@/lib/color-accent";
 import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
 import type { Memory, ReasoningEffort, TitleGenerationSettings, UserSettings } from "@/lib/types";
+import type { SaveMemoryResult } from "@/lib/memory-tools";
 import { cn } from "@/lib/utils";
 import { ColorAccentPicker } from "./color-accent-picker";
 import { MemorySettings } from "./memory-settings";
@@ -39,7 +40,7 @@ type Props = {
   settings: UserSettings;
   onSave: (patch: Partial<UserSettings>) => void;
   memories: Memory[];
-  onAddMemory: (content: string) => boolean;
+  onTryAddMemory: (content: string) => SaveMemoryResult;
   onRemoveMemory: (id: string) => void;
   initialTab?: SettingsTab;
   scrollTo?: SettingsScrollTarget | null;
@@ -52,7 +53,7 @@ export function SettingsDialog({
   settings,
   onSave,
   memories,
-  onAddMemory,
+  onTryAddMemory,
   onRemoveMemory,
   initialTab = "general",
   scrollTo = null,
@@ -209,7 +210,7 @@ export function SettingsDialog({
                     setMemorySettings((prev) => ({ ...prev, ...patch }))
                   }
                   memories={memories}
-                  onAddMemory={onAddMemory}
+                  onTryAddMemory={onTryAddMemory}
                   onRemoveMemory={onRemoveMemory}
                 />
               </div>

@@ -8,11 +8,19 @@ const LABELS: Record<MemoryNotice["status"], string> = {
   saved: "Remembered",
   duplicate: "Already remembered",
   full: "Memory full",
+  storage_failed: "Couldn't save",
+  tool_round_limit: "Save limit reached",
 };
 
 function factText(notice: MemoryNotice): string | null {
   if (notice.status === "full") {
     return "Couldn't save — free space in settings";
+  }
+  if (notice.status === "storage_failed") {
+    return notice.content?.trim() || "Browser storage is full";
+  }
+  if (notice.status === "tool_round_limit") {
+    return "Too many save attempts in one reply — add manually in settings";
   }
   const text = notice.content?.trim();
   return text || null;
@@ -25,12 +33,16 @@ type Props = {
 
 export function MemoryNoticeRow({ notice, onOpenMemorySettings }: Props) {
   const fact = factText(notice);
+  const isError =
+    notice.status === "full" ||
+    notice.status === "storage_failed" ||
+    notice.status === "tool_round_limit";
 
   return (
     <div
       className={cn(
         "mt-2.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground",
-        notice.status === "full" && "text-destructive/80",
+        isError && "text-destructive/80",
       )}
     >
       <HardDrive size={12} className="shrink-0 opacity-55" />

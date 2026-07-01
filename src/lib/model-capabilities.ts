@@ -2,6 +2,7 @@ export type ModelCapabilities = {
   vision: boolean;
   code: boolean;
   pdf: boolean;
+  tools: boolean;
   contextTokens: number | null;
 };
 
@@ -9,6 +10,7 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   vision: false,
   code: true,
   pdf: true,
+  tools: true,
   contextTokens: null,
 };
 
@@ -21,11 +23,14 @@ export function attachmentSupported(
 }
 
 export function unsupportedReason(
-  kind: "image" | "pdf" | "code",
+  kind: "image" | "pdf" | "code" | "tools",
   model: string,
 ): string {
   if (kind === "image") {
     return `Images aren't supported by ${model || "this model"}. Choose a vision-capable model.`;
+  }
+  if (kind === "tools") {
+    return `${model || "This model"} can't use the save_memory tool. Memories are still injected into the prompt — add them manually in settings.`;
   }
   return `This file type isn't supported by ${model || "this model"}.`;
 }
@@ -60,6 +65,7 @@ export function capabilitiesFromOpenRouterModel(
     vision: modalities.includes("image"),
     code: true,
     pdf: true,
+    tools: true,
     contextTokens: contextLengthFromOpenRouterModel(model),
   };
 }
@@ -112,11 +118,13 @@ export function capabilitiesFromOllamaShow(
   const capabilities = data?.capabilities ?? [];
   const families = data?.details?.families ?? [];
   const vision = capabilities.includes("vision") || families.includes("clip");
+  const tools = capabilities.includes("tools");
 
   return {
     vision,
     code: true,
     pdf: true,
+    tools,
     contextTokens: contextLengthFromOllamaShow(data),
   };
 }

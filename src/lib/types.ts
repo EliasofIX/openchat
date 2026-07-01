@@ -19,7 +19,12 @@ export type PendingAttachment = MessageAttachment & {
   previewUrl?: string;
 };
 
-export type MemoryNoticeStatus = "saved" | "duplicate" | "full";
+export type MemoryNoticeStatus =
+  | "saved"
+  | "duplicate"
+  | "full"
+  | "storage_failed"
+  | "tool_round_limit";
 
 export type MemoryNotice = {
   status: MemoryNoticeStatus;

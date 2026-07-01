@@ -42,12 +42,31 @@ export function Chat() {
   const settingsHook = useSettings();
   const memoriesHook = useMemories();
   useColorAccent(settingsHook.settings.colorAccent, settingsHook.hydrated);
+
+  const activeModel = getActiveModel(settingsHook.settings);
+  const modelCapabilities = useModelCapabilities({
+    provider: settingsHook.settings.provider,
+    model: activeModel,
+    apiKey: settingsHook.settings.openRouterApiKey,
+    ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
+  });
+
+  const memoryToolsAvailable = modelCapabilities.capabilities.tools;
+  const memoryEnabled =
+    settingsHook.settings.memory.enabled && memoryToolsAvailable;
+  const memoryToolsUnavailable =
+    settingsHook.settings.memory.enabled &&
+    !modelCapabilities.loading &&
+    !memoryToolsAvailable;
+
   const systemPrompt = buildSystemPrompt(settingsHook.settings, memoriesHook.memories);
   const settingsRef = useRef(settingsHook.settings);
   const convRef = useRef(conv);
   const lastUpsertRef = useRef<{ id: string; aiTitleGenerated: boolean } | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const stickToBottomRef = useRef(true);
+  const storageReady =
+    conv.hydrated && settingsHook.hydrated && memoriesHook.hydrated;
 
   useEffect(() => {
     settingsRef.current = settingsHook.settings;
@@ -60,11 +79,11 @@ export function Chat() {
   const chat = useChat({
     systemPrompt,
     provider: settingsHook.settings.provider,
-    model: getActiveModel(settingsHook.settings),
+    model: activeModel,
     apiKey: settingsHook.settings.openRouterApiKey,
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
-    memoryEnabled: settingsHook.settings.memory.enabled,
+    memoryEnabled,
     onSaveMemory: (content) => memoriesHook.tryAdd(content, "agent"),
     onFinish: (_msg, all) => {
       const saved = lastUpsertRef.current;
@@ -79,13 +98,6 @@ export function Chat() {
     },
   });
 
-  const activeModel = getActiveModel(settingsHook.settings);
-  const modelCapabilities = useModelCapabilities({
-    provider: settingsHook.settings.provider,
-    model: activeModel,
-    apiKey: settingsHook.settings.openRouterApiKey,
-    ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
-  });
   const attachmentsHook = useAttachments(
     activeModel,
     modelCapabilities.capabilities,
@@ -153,6 +165,7 @@ export function Chat() {
   }, [chat.messages, chat.isStreaming, visibleCount]);
 
   const onSend = (text: string, files: MessageAttachment[]) => {
+    if (!storageReady) return;
     stickToBottomRef.current = true;
     chat.send(text, files);
   };
@@ -193,7 +206,7 @@ export function Chat() {
             settings={settingsHook.settings}
             onSave={settingsHook.update}
             memories={memoriesHook.memories}
-            onAddMemory={memoriesHook.add}
+            onTryAddMemory={(content) => memoriesHook.tryAdd(content, "user")}
             onRemoveMemory={memoriesHook.remove}
             initialTab={settingsTab}
             scrollTo={settingsScrollTo}
@@ -302,6 +315,7 @@ export function Chat() {
           contextTokens={modelCapabilities.capabilities.contextTokens}
           modelCapabilitiesLoading={modelCapabilities.loading}
           modelCapabilitiesError={modelCapabilities.error}
+          memoryToolsUnavailable={memoryToolsUnavailable}
           settings={settingsHook.settings}
           attachmentsHook={attachmentsHook}
           onSend={onSend}

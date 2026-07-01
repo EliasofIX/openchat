@@ -104,6 +104,8 @@ export function executeSaveMemoryTool(
       return "Already remembered.";
     case "full":
       return "Memory is full.";
+    case "storage_failed":
+      return "Could not save to memory — browser storage is full.";
     default:
       return "Invalid memory content.";
   }
@@ -115,7 +117,12 @@ export function memoryNoticeFromSave(
 ): MemoryNotice | null {
   if (!content || result === "invalid") return null;
   if (result === "full") return { status: "full" };
+  if (result === "storage_failed") return { status: "storage_failed", content };
   return { status: result, content };
+}
+
+export function memoryNoticeFromToolRoundLimit(): MemoryNotice {
+  return { status: "tool_round_limit" };
 }
 
 export function mergeMemoryNotice(
@@ -125,6 +132,8 @@ export function mergeMemoryNotice(
   if (!prev) return next;
   if (prev.status === "saved") return prev;
   if (next.status === "saved") return next;
+  if (prev.status === "tool_round_limit") return prev;
+  if (next.status === "tool_round_limit") return next;
   return next;
 }
 

@@ -8,6 +8,7 @@ import { useContextUsage } from "@/hooks/use-context-usage";
 import type { useAttachments } from "@/hooks/use-attachments";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
+import { unsupportedReason } from "@/lib/model-capabilities";
 import type { Message, MessageAttachment, UserSettings } from "@/lib/types";
 import { glassPill } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ type Props = {
   contextTokens: number | null;
   modelCapabilitiesLoading: boolean;
   modelCapabilitiesError?: string | null;
+  memoryToolsUnavailable?: boolean;
   settings: UserSettings;
   attachmentsHook: AttachmentsHook;
   onSend: (text: string, files: MessageAttachment[]) => void;
@@ -48,6 +50,7 @@ export function ChatComposer({
   contextTokens,
   modelCapabilitiesLoading,
   modelCapabilitiesError,
+  memoryToolsUnavailable = false,
   settings,
   attachmentsHook,
   onSend,
@@ -99,6 +102,32 @@ export function ChatComposer({
   };
 
   const activeModel = getActiveModel(settings);
+  const memoryToolsHint =
+    memoryToolsUnavailable && settings.memory.enabled
+      ? unsupportedReason("tools", activeModel)
+      : null;
+
+  const capabilityWarning = modelCapabilitiesError ? (
+    <span
+      className={glassPill(
+        "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
+      )}
+      title={modelCapabilitiesError}
+    >
+      Context limits unavailable
+    </span>
+  ) : null;
+
+  const memoryWarning = memoryToolsHint ? (
+    <span
+      className={glassPill(
+        "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
+      )}
+      title={memoryToolsHint}
+    >
+      Memory read-only
+    </span>
+  ) : null;
 
   return (
     <div className="oc-composer-pad z-20 shrink-0 pt-3">
@@ -126,16 +155,8 @@ export function ChatComposer({
               {REASONING_EFFORT_LABELS[settings.reasoning.effort]}
             </span>
             <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
-            {modelCapabilitiesError && (
-              <span
-                className={glassPill(
-                  "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
-                )}
-                title={modelCapabilitiesError}
-              >
-                Context limits unavailable
-              </span>
-            )}
+            {capabilityWarning}
+            {memoryWarning}
           </div>
         ) : (
           <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
@@ -153,16 +174,8 @@ export function ChatComposer({
               )}
             </span>
             <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
-            {modelCapabilitiesError && (
-              <span
-                className={glassPill(
-                  "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
-                )}
-                title={modelCapabilitiesError}
-              >
-                Context limits unavailable
-              </span>
-            )}
+            {capabilityWarning}
+            {memoryWarning}
           </div>
         )}
         <ChatInput

@@ -15,9 +15,23 @@ const KEY_CONV_PREFIX = "openchat:conv:";
 const KEY_SETTINGS = "openchat:settings";
 const KEY_ACTIVE = "openchat:active-conversation";
 const KEY_SIDEBAR_OPEN = "openchat:sidebar-open";
-const KEY_MEMORIES = "openchat:memories";
+export const KEY_MEMORIES = "openchat:memories";
 
 export const MAX_MEMORIES = 50;
+
+/** When over cap, evict agent-saved entries before user entries. */
+export function capMemories(memories: Memory[]): Memory[] {
+  if (memories.length <= MAX_MEMORIES) return memories;
+
+  const sorted = [...memories].sort((a, b) => b.updatedAt - a.updatedAt);
+  const overflow = sorted.slice(MAX_MEMORIES);
+  const autoEvicted = overflow
+    .filter((m) => m.source === "agent")
+    .map((m) => m.id);
+  if (autoEvicted.length === 0) return sorted.slice(0, MAX_MEMORIES);
+
+  return sorted.filter((m) => !autoEvicted.includes(m.id)).slice(0, MAX_MEMORIES);
+}
 
 export type StorageError = "quota_exceeded";
 
@@ -129,7 +143,7 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
 
 function normalizeMemories(raw: unknown): Memory[] {
   if (!Array.isArray(raw)) return [];
-  return raw
+  const parsed = raw
     .filter(
       (item): item is Memory =>
         typeof item === "object" &&
@@ -145,8 +159,8 @@ function normalizeMemories(raw: unknown): Memory[] {
       source: (item.source === "user" ? "user" : "agent") as Memory["source"],
     }))
     .filter((item) => item.content.length > 0)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, MAX_MEMORIES);
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return capMemories(parsed);
 }
 
 function safeParse<T>(raw: string | null, fallback: T): T {
@@ -323,8 +337,8 @@ export const storage = {
     return normalizeMemories(safeParse<unknown>(localStorage.getItem(KEY_MEMORIES), []));
   },
 
-  saveMemories(memories: Memory[]) {
-    if (typeof window === "undefined") return;
-    safeSetItem(KEY_MEMORIES, JSON.stringify(normalizeMemories(memories)));
+  saveMemories(memories: Memory[]): boolean {
+    if (typeof window === "undefined") return false;
+    return safeSetItem(KEY_MEMORIES, JSON.stringify(normalizeMemories(memories)));
   },
 };

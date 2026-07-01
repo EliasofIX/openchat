@@ -263,7 +263,7 @@ Example (too much):
 | Conversation list / titles | `src/hooks/use-conversations.ts`, `src/lib/generate-title.ts` |
 | Sidebar open / docked layout | `src/hooks/use-sidebar-open.ts`, `src/components/chat/sidebar.tsx`, `src/components/chat/chat.tsx` — docked on `md+` with persisted open state (`openchat:sidebar-open`); mobile stays overlay drawer |
 | User settings | `src/hooks/use-settings.ts`, `src/lib/storage.ts` |
-| Agent memory | `src/hooks/use-memories.ts`, `src/lib/memory-tools.ts`, `src/components/chat/memory-settings.tsx` — localStorage `openchat:memories`; injected via `buildSystemPrompt`; main model gets `save_memory` tool when enabled (client executes tool, follow-up round in `use-chat.ts`) |
+| Agent memory | `src/hooks/use-memories.ts`, `src/lib/memory-tools.ts`, `src/components/chat/memory-settings.tsx` — localStorage `openchat:memories`; injected via `buildSystemPrompt`; main model gets `save_memory` tool when enabled **and** `ModelCapabilities.tools`; client executes tool, follow-up round in `use-chat.ts`. Check `saveMemories` return value — never report saved on quota failure. Single eviction policy in `storage.ts` (`capMemories`: agent entries evicted before user at cap). Gate send on memory/settings hydration; listen for `storage` events on `openchat:memories` for multi-tab sync. |
 | Attachment blobs (IDB) | `src/lib/attachment-store.ts`, `src/hooks/use-attachment-blob.ts` |
 | Assistant message rendering | `src/components/markdown.tsx`, `src/components/chat/message.tsx` |
 | Attachments | `src/lib/attachments.ts`, `src/hooks/use-attachments.ts` |

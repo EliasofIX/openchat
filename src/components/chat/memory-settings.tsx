@@ -4,6 +4,7 @@ import { HardDrive, Plus, Trash2 } from "@/components/icons";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { MAX_MEMORIES } from "@/lib/storage";
+import type { SaveMemoryResult } from "@/lib/memory-tools";
 import type { Memory, MemorySettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -12,11 +13,18 @@ import {
   SettingsToggleRow,
 } from "./settings-ui";
 
+const ADD_ERROR_MESSAGES: Partial<Record<SaveMemoryResult, string>> = {
+  duplicate: "Already saved.",
+  full: "Memory is full — remove an entry first.",
+  storage_failed: "Couldn't save — browser storage is full.",
+  invalid: "Enter a non-empty memory.",
+};
+
 type Props = {
   memorySettings: MemorySettings;
   onMemorySettingsChange: (patch: Partial<MemorySettings>) => void;
   memories: Memory[];
-  onAddMemory: (content: string) => boolean;
+  onTryAddMemory: (content: string) => SaveMemoryResult;
   onRemoveMemory: (id: string) => void;
 };
 
@@ -24,25 +32,32 @@ export function MemorySettings({
   memorySettings,
   onMemorySettingsChange,
   memories,
-  onAddMemory,
+  onTryAddMemory,
   onRemoveMemory,
 }: Props) {
   const [draft, setDraft] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
 
   const addDraft = () => {
     if (!draft.trim()) return;
-    if (onAddMemory(draft)) setDraft("");
+    const result = onTryAddMemory(draft);
+    if (result === "saved") {
+      setDraft("");
+      setAddError(null);
+      return;
+    }
+    setAddError(ADD_ERROR_MESSAGES[result] ?? "Couldn't save memory.");
   };
 
   return (
     <SettingsSection
       icon={HardDrive}
       title="Memory"
-      description="Facts the assistant remembers across all chats. The model can save new ones with a tool when memory is enabled."
+      description="Facts stored locally in your browser (up to 50). When full, agent-saved entries are removed before yours. Other tabs sync automatically."
     >
       <SettingsToggleRow
         label="Enable memory"
-        description="Inject saved memories into every chat and give the model a save_memory tool."
+        description="Inject saved memories into every chat and give the model a save_memory tool when supported."
         checked={memorySettings.enabled}
         onChange={(enabled) => onMemorySettingsChange({ enabled })}
       />
@@ -57,7 +72,10 @@ export function MemorySettings({
               <Input
                 type="text"
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  if (addError) setAddError(null);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -80,6 +98,9 @@ export function MemorySettings({
                 <Plus size={16} />
               </button>
             </div>
+            {addError && (
+              <p className="mt-1.5 text-xs text-destructive/80">{addError}</p>
+            )}
           </SettingsField>
 
           {memories.length > 0 ? (
