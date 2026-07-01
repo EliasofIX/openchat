@@ -29,7 +29,12 @@ import {
   extractReasoningText,
   reconcileReasoningAndContent,
 } from "@/lib/reasoning";
-import type { ModelProvider, ReasoningSettings } from "@/lib/types";
+import {
+  applyPromptCache,
+  parseCacheUsage,
+  shouldEnablePromptCache,
+} from "@/lib/prompt-cache";
+import type { ModelProvider, PromptCachingSettings, ReasoningSettings } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -60,6 +65,8 @@ type ChatRequest = {
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
   memoryEnabled?: boolean;
+  promptCaching?: PromptCachingSettings;
+  sessionId?: string;
 };
 
 type StreamPart = "content" | "reasoning";
@@ -68,6 +75,12 @@ const textEncoder = new TextEncoder();
 
 function encodePart(part: StreamPart, text: string): Uint8Array {
   return textEncoder.encode(`${JSON.stringify({ p: part, t: text })}\n`);
+}
+
+function encodeUsage(cached: number, written: number, prompt: number): Uint8Array {
+  return textEncoder.encode(
+    `${JSON.stringify({ p: "usage", prompt, cached, written })}\n`,
+  );
 }
 
 function encodeToolCalls(calls: CompletedToolCall[]): Uint8Array[] {
@@ -167,9 +180,12 @@ export async function POST(req: Request) {
     reasoning,
     provider: providerInput,
     memoryEnabled,
+    promptCaching,
+    sessionId,
   } = body;
   const provider = resolveProvider(providerInput);
   const toolsEnabled = Boolean(memoryEnabled);
+  const promptCachingEnabled = shouldEnablePromptCache(provider, promptCaching);
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response("`messages` must be a non-empty array.", { status: 400 });
@@ -191,11 +207,21 @@ export async function POST(req: Request) {
   );
 
   const streamReasoning = shouldStreamReasoning(reasoning);
-  const useNdjson = streamReasoning || toolsEnabled;
+  const useNdjson = streamReasoning || toolsEnabled || promptCachingEnabled;
   const showReasoningInStream = Boolean(reasoning?.showInResponse);
   const toolParams = toolsEnabled
     ? { tools: MEMORY_TOOLS, tool_choice: "auto" as const }
     : {};
+
+  const promptCacheParams = applyPromptCache({
+    provider,
+    model: resolvedModel,
+    messages: upstreamMessages,
+    settings: promptCaching,
+    sessionId,
+    tools: toolsEnabled ? MEMORY_TOOLS : undefined,
+  });
+  const cachedUpstreamMessages = promptCacheParams?.messages ?? upstreamMessages;
   const upstreamAbort = new AbortController();
   const onClientAbort = () => upstreamAbort.abort();
   if (req.signal.aborted) upstreamAbort.abort();
@@ -249,9 +275,18 @@ export async function POST(req: Request) {
       upstream = client.stream(
         {
           model: resolvedModel,
-          messages: upstreamMessages,
+          messages: cachedUpstreamMessages,
           ...(reasoningParam ? { reasoning: reasoningParam } : {}),
           ...toolParams,
+          ...(promptCacheParams?.cache_control
+            ? { cache_control: promptCacheParams.cache_control }
+            : {}),
+          ...(promptCacheParams?.session_id
+            ? { session_id: promptCacheParams.session_id }
+            : {}),
+          ...(promptCacheParams?.stream_options
+            ? { stream_options: promptCacheParams.stream_options }
+            : {}),
         },
         streamSignal,
       );
@@ -267,10 +302,14 @@ export async function POST(req: Request) {
       const plainSplitter = streamReasoning ? createPlainReasoningSplitter() : null;
       const toolCalls = toolsEnabled ? createToolCallAccumulator() : null;
       let sawDedicatedReasoning = false;
+      let cacheUsage: ReturnType<typeof parseCacheUsage> = null;
 
       try {
         for await (const chunk of upstream) {
           if (upstreamAbort.signal.aborted) break;
+          if (chunk.usage) {
+            cacheUsage = parseCacheUsage(chunk.usage);
+          }
           const choice = chunk.choices[0];
           const delta = choice?.delta;
           toolCalls?.push(delta?.tool_calls);
@@ -337,6 +376,16 @@ export async function POST(req: Request) {
           for (const encoded of encodeToolCalls(toolCalls.flush())) {
             controller.enqueue(encoded);
           }
+        }
+
+        if (promptCachingEnabled && cacheUsage && useNdjson) {
+          controller.enqueue(
+            encodeUsage(
+              cacheUsage.cachedTokens,
+              cacheUsage.cacheWriteTokens,
+              cacheUsage.promptTokens,
+            ),
+          );
         }
 
         controller.close();

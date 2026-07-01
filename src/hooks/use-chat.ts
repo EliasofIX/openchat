@@ -25,11 +25,13 @@ import {
   type SaveMemoryResult,
 } from "@/lib/memory-tools";
 import { reconcileReasoningAndContent } from "@/lib/reasoning";
+import type { PromptCacheUsage } from "@/lib/prompt-cache";
 import type {
   MemoryNotice,
   Message,
   MessageAttachment,
   ModelProvider,
+  PromptCachingSettings,
   ReasoningSettings,
 } from "@/lib/types";
 import type { ToolCall } from "@/lib/ai-client";
@@ -51,14 +53,18 @@ export type UseChatOptions = {
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
   memoryEnabled?: boolean;
+  promptCaching?: PromptCachingSettings;
+  sessionId?: string | null;
   onSaveMemory?: (content: string) => SaveMemoryResult;
   onFinish?: (assistantMessage: Message, allMessages: Message[]) => void;
   onMessagesChange?: (messages: Message[]) => void;
+  onCacheUsage?: (usage: PromptCacheUsage) => void;
 };
 
 type StreamPart =
   | { p: "content" | "reasoning"; t: string }
-  | { p: "tool_call"; id: string; name: string; arguments: string };
+  | { p: "tool_call"; id: string; name: string; arguments: string }
+  | { p: "usage"; prompt: number; cached: number; written: number };
 
 type ApiPayloadMessage = {
   role: "user" | "assistant" | "tool";
@@ -68,16 +74,34 @@ type ApiPayloadMessage = {
   tool_call_id?: string;
 };
 
-function isNdjsonStream(contentType: string | null, memoryEnabled: boolean): boolean {
+function isNdjsonStream(
+  contentType: string | null,
+  memoryEnabled: boolean,
+  promptCachingEnabled: boolean,
+): boolean {
   if (contentType?.includes("application/x-ndjson")) return true;
-  return memoryEnabled;
+  return memoryEnabled || promptCachingEnabled;
 }
 
 function parseStreamLine(line: string): StreamPart | null {
   try {
     const parsed = JSON.parse(line) as unknown;
     if (isMemoryToolCallWire(parsed)) return parsed;
-    const part = parsed as { p?: string; t?: string };
+    const part = parsed as {
+      p?: string;
+      t?: string;
+      prompt?: number;
+      cached?: number;
+      written?: number;
+    };
+    if (part.p === "usage") {
+      return {
+        p: "usage",
+        prompt: part.prompt ?? 0,
+        cached: part.cached ?? 0,
+        written: part.written ?? 0,
+      };
+    }
     if (part.p === "content" || part.p === "reasoning") {
       return { p: part.p, t: part.t ?? "" };
     }
@@ -131,9 +155,12 @@ export function useChat(options: UseChatOptions = {}) {
     ollamaBaseUrl,
     reasoning,
     memoryEnabled,
+    promptCaching,
+    sessionId,
     onSaveMemory,
     onFinish,
     onMessagesChange,
+    onCacheUsage,
   } = options;
 
   const [messages, setMessages] = useState<Message[]>(options.initialMessages ?? []);
@@ -148,9 +175,12 @@ export function useChat(options: UseChatOptions = {}) {
   const ollamaBaseUrlRef = useRef(ollamaBaseUrl);
   const reasoningRef = useRef(reasoning);
   const memoryEnabledRef = useRef(memoryEnabled);
+  const promptCachingRef = useRef(promptCaching);
+  const sessionIdRef = useRef(sessionId);
   const onSaveMemoryRef = useRef(onSaveMemory);
   const onFinishRef = useRef(onFinish);
   const onMessagesChangeRef = useRef(onMessagesChange);
+  const onCacheUsageRef = useRef(onCacheUsage);
   const abortRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
 
@@ -162,9 +192,12 @@ export function useChat(options: UseChatOptions = {}) {
   useEffect(() => { ollamaBaseUrlRef.current = ollamaBaseUrl; }, [ollamaBaseUrl]);
   useEffect(() => { reasoningRef.current = reasoning; }, [reasoning]);
   useEffect(() => { memoryEnabledRef.current = memoryEnabled; }, [memoryEnabled]);
+  useEffect(() => { promptCachingRef.current = promptCaching; }, [promptCaching]);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { onSaveMemoryRef.current = onSaveMemory; }, [onSaveMemory]);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
   useEffect(() => { onMessagesChangeRef.current = onMessagesChange; }, [onMessagesChange]);
+  useEffect(() => { onCacheUsageRef.current = onCacheUsage; }, [onCacheUsage]);
 
   const flushPersist = useCallback((next: Message[]) => {
     onMessagesChangeRef.current?.(next);
@@ -342,6 +375,13 @@ export function useChat(options: UseChatOptions = {}) {
           memoryEnabled: Boolean(memoryEnabledRef.current),
         };
 
+        if (promptCachingRef.current) {
+          payload.promptCaching = promptCachingRef.current;
+        }
+
+        const resolvedSessionId = sessionIdRef.current?.trim();
+        if (resolvedSessionId) payload.sessionId = resolvedSessionId;
+
         const resolvedModel = modelRef.current?.trim();
         if (resolvedModel) payload.model = resolvedModel;
 
@@ -370,6 +410,10 @@ export function useChat(options: UseChatOptions = {}) {
         const ndjson = isNdjsonStream(
           res.headers.get("Content-Type"),
           Boolean(memoryEnabledRef.current),
+          Boolean(
+            promptCachingRef.current?.enabled &&
+              (providerRef.current ?? "openrouter") === "openrouter",
+          ),
         );
         let lineBuffer = "";
         let roundContent = "";
@@ -377,6 +421,16 @@ export function useChat(options: UseChatOptions = {}) {
         const toolCalls: CompletedToolCall[] = [];
 
         const applyRoundPart = (part: StreamPart) => {
+          if (part.p === "usage") {
+            if (!isStale()) {
+              onCacheUsageRef.current?.({
+                promptTokens: part.prompt,
+                cachedTokens: part.cached,
+                cacheWriteTokens: part.written,
+              });
+            }
+            return;
+          }
           if (part.p === "tool_call") {
             toolCalls.push({
               id: part.id,

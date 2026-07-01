@@ -1,8 +1,12 @@
+import { promptCachingModeForModel, type PromptCachingMode } from "@/lib/prompt-cache";
+
 export type ModelCapabilities = {
   vision: boolean;
   code: boolean;
   pdf: boolean;
   contextTokens: number | null;
+  /** How this model benefits from OpenRouter prompt caching, if at all. */
+  promptCaching: PromptCachingMode;
 };
 
 export const DEFAULT_CAPABILITIES: ModelCapabilities = {
@@ -10,6 +14,7 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   code: true,
   pdf: true,
   contextTokens: null,
+  promptCaching: "none",
 };
 
 export function attachmentSupported(
@@ -61,6 +66,7 @@ export function capabilitiesFromOpenRouterModel(
     code: true,
     pdf: true,
     contextTokens: contextLengthFromOpenRouterModel(model),
+    promptCaching: promptCachingModeForModel(model?.id ?? ""),
   };
 }
 
@@ -118,5 +124,6 @@ export function capabilitiesFromOllamaShow(
     code: true,
     pdf: true,
     contextTokens: contextLengthFromOllamaShow(data),
+    promptCaching: "none",
   };
 }

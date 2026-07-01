@@ -74,6 +74,7 @@ export function SettingsDialog({
     settings.titleGeneration,
   );
   const [memorySettings, setMemorySettings] = useState(settings.memory);
+  const [promptCaching, setPromptCaching] = useState(settings.promptCaching);
   const [colorAccent, setColorAccent] = useState<string | null>(settings.colorAccent);
   const previewAccentRef = useRef<string | null>(settings.colorAccent);
   const memorySectionRef = useRef<HTMLDivElement>(null);
@@ -103,6 +104,7 @@ export function SettingsDialog({
       setCollapseReasoning(settings.reasoning.collapseByDefault);
       setTitleGeneration(settings.titleGeneration);
       setMemorySettings(settings.memory);
+      setPromptCaching(settings.promptCaching);
       setColorAccent(settings.colorAccent);
       previewAccentRef.current = settings.colorAccent;
     }
@@ -136,6 +138,7 @@ export function SettingsDialog({
       },
       titleGeneration,
       memory: memorySettings,
+      promptCaching,
     });
     previewAccentRef.current = colorAccent;
     onOpenChange(false);
@@ -292,6 +295,8 @@ export function SettingsDialog({
               onOllamaBaseUrlChange={setOllamaBaseUrl}
               ollamaModel={ollamaModel}
               onOllamaModelChange={setOllamaModel}
+              promptCaching={promptCaching}
+              onPromptCachingChange={setPromptCaching}
             />
           )}
         </div>

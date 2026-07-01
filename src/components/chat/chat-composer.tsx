@@ -8,7 +8,9 @@ import { useContextUsage } from "@/hooks/use-context-usage";
 import type { useAttachments } from "@/hooks/use-attachments";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
-import type { Message, MessageAttachment, UserSettings } from "@/lib/types";
+import type { Message, MessageAttachment, PromptCachingSettings, UserSettings } from "@/lib/types";
+import type { PromptCachingMode } from "@/lib/prompt-cache";
+import type { PromptCacheUsage } from "@/lib/prompt-cache";
 import { glassPill } from "@/lib/utils";
 
 type AttachmentsHook = ReturnType<typeof useAttachments>;
@@ -18,6 +20,8 @@ type Props = {
   isStreaming: boolean;
   systemPrompt?: string;
   contextTokens: number | null;
+  promptCachingMode?: PromptCachingMode;
+  lastCacheUsage?: PromptCacheUsage | null;
   modelCapabilitiesLoading: boolean;
   modelCapabilitiesError?: string | null;
   settings: UserSettings;
@@ -46,6 +50,8 @@ export function ChatComposer({
   isStreaming,
   systemPrompt,
   contextTokens,
+  promptCachingMode = "none",
+  lastCacheUsage = null,
   modelCapabilitiesLoading,
   modelCapabilitiesError,
   settings,
@@ -88,6 +94,7 @@ export function ChatComposer({
     draftText: deferredInput,
     draftAttachments,
     contextTokens,
+    lastCacheUsage,
   });
 
   const onSubmit = () => {
@@ -125,7 +132,12 @@ export function ChatComposer({
               <span className="text-muted-foreground/70">·</span>
               {REASONING_EFFORT_LABELS[settings.reasoning.effort]}
             </span>
-            <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+            <ContextUsage
+              usage={contextUsage}
+              loading={modelCapabilitiesLoading}
+              promptCaching={settings.promptCaching}
+              promptCachingMode={promptCachingMode}
+            />
             {modelCapabilitiesError && (
               <span
                 className={glassPill(
@@ -152,7 +164,12 @@ export function ChatComposer({
                 </>
               )}
             </span>
-            <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+            <ContextUsage
+              usage={contextUsage}
+              loading={modelCapabilitiesLoading}
+              promptCaching={settings.promptCaching}
+              promptCachingMode={promptCachingMode}
+            />
             {modelCapabilitiesError && (
               <span
                 className={glassPill(

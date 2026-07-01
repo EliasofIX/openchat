@@ -7,6 +7,7 @@ import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
 import type { SettingsTab, SettingsScrollTarget } from "./settings-dialog";
 import { useChat } from "@/hooks/use-chat";
+import type { PromptCacheUsage } from "@/lib/prompt-cache";
 import { useAttachments } from "@/hooks/use-attachments";
 import { useLowPower } from "@/hooks/use-low-power";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
@@ -57,6 +58,13 @@ export function Chat() {
     convRef.current = conv;
   }, [conv]);
 
+  const [composerReset, setComposerReset] = useState(0);
+  const [lastCacheUsage, setLastCacheUsage] = useState<PromptCacheUsage | null>(null);
+
+  useEffect(() => {
+    setLastCacheUsage(null);
+  }, [conv.activeId]);
+
   const chat = useChat({
     systemPrompt,
     provider: settingsHook.settings.provider,
@@ -65,6 +73,9 @@ export function Chat() {
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
     memoryEnabled: settingsHook.settings.memory.enabled,
+    promptCaching: settingsHook.settings.promptCaching,
+    sessionId: conv.activeId,
+    onCacheUsage: setLastCacheUsage,
     onSaveMemory: (content) => memoriesHook.tryAdd(content, "agent"),
     onFinish: (_msg, all) => {
       const saved = lastUpsertRef.current;
@@ -99,7 +110,6 @@ export function Chat() {
   const [settingsScrollTo, setSettingsScrollTo] = useState<SettingsScrollTarget | null>(null);
   const [visibleCount, setVisibleCount] = useState(VISIBLE_MESSAGE_LIMIT);
   const [storageError, setStorageError] = useState(getStorageError());
-  const [composerReset, setComposerReset] = useState(0);
 
   const lastLoadedId = useRef<string | null>(null);
   const setMessages = chat.setMessages;
@@ -300,6 +310,8 @@ export function Chat() {
           isStreaming={chat.isStreaming}
           systemPrompt={systemPrompt}
           contextTokens={modelCapabilities.capabilities.contextTokens}
+          promptCachingMode={modelCapabilities.capabilities.promptCaching}
+          lastCacheUsage={lastCacheUsage}
           modelCapabilitiesLoading={modelCapabilities.loading}
           modelCapabilitiesError={modelCapabilities.error}
           settings={settingsHook.settings}

@@ -73,6 +73,10 @@ export const DEFAULT_SETTINGS: UserSettings = {
   memory: {
     enabled: true,
   },
+  promptCaching: {
+    enabled: true,
+    ttl: "5m",
+  },
 };
 
 const LEGACY_DEFAULT_TITLE_MODEL = "google/gemini-2.0-flash-001";
@@ -123,6 +127,10 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
     memory: {
       ...DEFAULT_SETTINGS.memory,
       ...stored.memory,
+    },
+    promptCaching: {
+      ...DEFAULT_SETTINGS.promptCaching,
+      ...stored.promptCaching,
     },
   };
 }
