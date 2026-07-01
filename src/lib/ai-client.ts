@@ -1,7 +1,7 @@
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
 export type ChatContentPart =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; cache_control?: { type: "ephemeral"; ttl?: "1h" } }
   | { type: "image_url"; image_url: { url: string } };
 
 export type ToolCall = {
@@ -45,6 +45,15 @@ export type ChatCompletionChunk = {
     delta?: ChatCompletionDelta;
     finish_reason?: string | null;
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      cache_write_tokens?: number;
+    };
+  };
 };
 
 export type ChatCompletionResponse = {
@@ -73,6 +82,9 @@ export type ChatCompletionRequest = {
   think?: boolean;
   tools?: ChatToolDefinition[];
   tool_choice?: "auto" | "none";
+  cache_control?: { type: "ephemeral"; ttl?: "1h" };
+  session_id?: string;
+  stream_options?: { include_usage: boolean };
 };
 
 export type AiClientOptions = {

@@ -9,6 +9,7 @@ import type { useAttachments } from "@/hooks/use-attachments";
 import { getActiveModel, PROVIDER_LABELS } from "@/lib/providers";
 import { REASONING_EFFORT_LABELS } from "@/lib/openrouter";
 import { unsupportedReason } from "@/lib/model-capabilities";
+import type { PromptCachingMode, PromptCacheUsage } from "@/lib/prompt-cache";
 import type { Message, MessageAttachment, UserSettings } from "@/lib/types";
 import { glassPill } from "@/lib/utils";
 
@@ -19,6 +20,8 @@ type Props = {
   isStreaming: boolean;
   systemPrompt?: string;
   contextTokens: number | null;
+  promptCachingMode?: PromptCachingMode;
+  lastCacheUsage?: PromptCacheUsage | null;
   modelCapabilitiesLoading: boolean;
   modelCapabilitiesError?: string | null;
   memoryToolsUnavailable?: boolean;
@@ -48,6 +51,8 @@ export function ChatComposer({
   isStreaming,
   systemPrompt,
   contextTokens,
+  promptCachingMode = "none",
+  lastCacheUsage = null,
   modelCapabilitiesLoading,
   modelCapabilitiesError,
   memoryToolsUnavailable = false,
@@ -91,6 +96,7 @@ export function ChatComposer({
     draftText: deferredInput,
     draftAttachments,
     contextTokens,
+    lastCacheUsage,
   });
 
   const onSubmit = () => {
@@ -154,7 +160,12 @@ export function ChatComposer({
               <span className="text-muted-foreground/70">·</span>
               {REASONING_EFFORT_LABELS[settings.reasoning.effort]}
             </span>
-            <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+            <ContextUsage
+              usage={contextUsage}
+              loading={modelCapabilitiesLoading}
+              promptCaching={settings.promptCaching}
+              promptCachingMode={promptCachingMode}
+            />
             {capabilityWarning}
             {memoryWarning}
           </div>
@@ -173,7 +184,12 @@ export function ChatComposer({
                 </>
               )}
             </span>
-            <ContextUsage usage={contextUsage} loading={modelCapabilitiesLoading} />
+            <ContextUsage
+              usage={contextUsage}
+              loading={modelCapabilitiesLoading}
+              promptCaching={settings.promptCaching}
+              promptCachingMode={promptCachingMode}
+            />
             {capabilityWarning}
             {memoryWarning}
           </div>

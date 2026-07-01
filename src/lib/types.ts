@@ -90,6 +90,12 @@ export type MemorySettings = {
   enabled: boolean;
 };
 
+export type PromptCachingSettings = {
+  enabled: boolean;
+  /** Provider cache TTL — 5 minutes (default) or 1 hour (higher write cost). */
+  ttl: "5m" | "1h";
+};
+
 export type UserSettings = {
   name: string;
   customInstructions: string;
@@ -103,4 +109,5 @@ export type UserSettings = {
   reasoning: ReasoningSettings;
   titleGeneration: TitleGenerationSettings;
   memory: MemorySettings;
+  promptCaching: PromptCachingSettings;
 };

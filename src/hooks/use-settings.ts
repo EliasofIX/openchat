@@ -26,6 +26,9 @@ export function useSettings() {
           ? { ...prev.titleGeneration, ...patch.titleGeneration }
           : prev.titleGeneration,
         memory: patch.memory ? { ...prev.memory, ...patch.memory } : prev.memory,
+        promptCaching: patch.promptCaching
+          ? { ...prev.promptCaching, ...patch.promptCaching }
+          : prev.promptCaching,
       };
       storage.saveSettings(next);
       return next;

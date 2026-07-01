@@ -5,9 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_OLLAMA_BASE_URL, fetchOllamaModels, PROVIDER_LABELS } from "@/lib/providers";
-import type { ModelProvider } from "@/lib/types";
+import type { ModelProvider, PromptCachingSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { SettingsField, SettingsSection } from "./settings-ui";
+import { SettingsField, SettingsSection, SettingsToggleRow } from "./settings-ui";
 
 type Props = {
   provider: ModelProvider;
@@ -20,6 +20,8 @@ type Props = {
   onOllamaBaseUrlChange: (value: string) => void;
   ollamaModel: string;
   onOllamaModelChange: (value: string) => void;
+  promptCaching: PromptCachingSettings;
+  onPromptCachingChange: (value: PromptCachingSettings) => void;
 };
 
 export function ProvidersSettings({
@@ -33,6 +35,8 @@ export function ProvidersSettings({
   onOllamaBaseUrlChange,
   ollamaModel,
   onOllamaModelChange,
+  promptCaching,
+  onPromptCachingChange,
 }: Props) {
   const [showApiKey, setShowApiKey] = useState(false);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
@@ -161,6 +165,37 @@ export function ProvidersSettings({
               spellCheck={false}
             />
           </SettingsField>
+
+          <SettingsToggleRow
+            label="Prompt caching"
+            description="Reuse stable input tokens across turns via OpenRouter. Lowers cost and latency on long chats, system prompts, and attachments."
+            checked={promptCaching.enabled}
+            onChange={(enabled) => onPromptCachingChange({ ...promptCaching, enabled })}
+          />
+
+          {promptCaching.enabled && (
+            <SettingsField
+              label="Cache TTL"
+              hint="5 minutes is the default provider TTL. 1 hour costs more on cache writes but suits longer sessions."
+            >
+              <select
+                value={promptCaching.ttl}
+                onChange={(e) =>
+                  onPromptCachingChange({
+                    ...promptCaching,
+                    ttl: e.target.value === "1h" ? "1h" : "5m",
+                  })
+                }
+                className={cn(
+                  "h-8 w-full rounded-lg border border-border bg-muted px-2.5 text-xs text-foreground outline-none",
+                  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                )}
+              >
+                <option value="5m">5 minutes</option>
+                <option value="1h">1 hour</option>
+              </select>
+            </SettingsField>
+          )}
         </SettingsSection>
       ) : (
         <SettingsSection
