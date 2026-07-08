@@ -113,9 +113,9 @@ export function ChatInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKey}
           onPaste={onPaste}
-          onFocus={(e) => {
+          onFocus={() => {
             requestAnimationFrame(() => {
-              e.currentTarget.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
             });
           }}
           placeholder="Message…"
