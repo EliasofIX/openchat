@@ -31,13 +31,13 @@ of models you can use immediately — see <https://openrouter.ai/models>.
 ### Staying up to date
 
 ```bash
-npm run update                 # git pull + npm install
-npm run update -- --upstream   # merge latest upstream/main (for forks)
+npm run update                 # fetch + pull current branch from origin + npm install
+npm run update -- --upstream   # pull origin, then merge upstream/main (for forks)
 ```
 
 `./update.sh` works the same way. The script refuses to run with uncommitted
-changes unless you pass `--force`. Add `--rebase` to rebase onto the remote
-branch instead of merging.
+changes unless you pass `--allow-dirty`. Add `--rebase` to rebase onto the
+remote branch instead of merging.
 
 ---
 

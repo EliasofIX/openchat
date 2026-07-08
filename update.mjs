@@ -2,9 +2,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // update.mjs — pull the latest code and refresh dependencies.
 //
-//   node update.mjs              pull current branch from origin + npm install
-//   node update.mjs --upstream   also merge upstream/main (for forks)
-//   node update.mjs --rebase     rebase onto the remote branch instead of merge
+//   node update.mjs                pull current branch from origin + npm install
+//   node update.mjs --upstream       pull origin, then merge upstream/main (forks)
+//   node update.mjs --rebase         rebase onto the remote branch instead of merge
+//   node update.mjs --allow-dirty    proceed with uncommitted local changes
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { existsSync } from "node:fs";
@@ -20,9 +21,9 @@ const UPSTREAM_BRANCH = "main";
 const args = new Set(process.argv.slice(2));
 const useUpstream = args.has("--upstream");
 const useRebase = args.has("--rebase");
-const force = args.has("--force");
+const allowDirty = args.has("--allow-dirty") || args.has("--force");
 
-function run(command, runArgs, { allowFail = false } = {}) {
+function run(command, runArgs) {
   const result = spawnSync(command, runArgs, {
     cwd: root,
     stdio: "inherit",
@@ -34,11 +35,9 @@ function run(command, runArgs, { allowFail = false } = {}) {
     process.exit(1);
   }
 
-  if (!allowFail && result.status !== 0) {
+  if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
-
-  return result.status ?? 0;
 }
 
 function runCapture(command, runArgs) {
@@ -60,6 +59,14 @@ function runCapture(command, runArgs) {
   return (result.stdout ?? "").trim();
 }
 
+function gitOk(command, runArgs) {
+  const result = spawnSync(command, runArgs, {
+    cwd: root,
+    shell: process.platform === "win32",
+  });
+  return result.status === 0;
+}
+
 function ensureGitRepo() {
   if (!existsSync(join(root, ".git"))) {
     console.error("Not a git repository — clone Open Chat first, then run update.");
@@ -69,11 +76,14 @@ function ensureGitRepo() {
 
 function ensureCleanTree() {
   const dirty = runCapture("git", ["status", "--porcelain"]);
-  if (dirty && !force) {
+  if (dirty && !allowDirty) {
     console.error(
-      "Working tree has uncommitted changes. Commit or stash them first, or pass --force.",
+      "Working tree has uncommitted changes. Commit or stash them first, or pass --allow-dirty.",
     );
     process.exit(1);
+  }
+  if (dirty) {
+    console.warn("Warning: proceeding with uncommitted changes — pull may conflict.\n");
   }
 }
 
@@ -86,9 +96,13 @@ function currentBranch() {
   return branch;
 }
 
-function remoteBranchExists(remote, branch) {
-  const ref = runCapture("git", ["ls-remote", "--heads", remote, branch]);
-  return ref.length > 0;
+function localRemoteBranchExists(remote, branch) {
+  return gitOk("git", [
+    "show-ref",
+    "--verify",
+    "--quiet",
+    `refs/remotes/${remote}/${branch}`,
+  ]);
 }
 
 function ensureUpstreamRemote() {
@@ -114,29 +128,43 @@ ensureGitRepo();
 ensureCleanTree();
 
 const branch = currentBranch();
+let pulled = 0;
 
-console.log(`Fetching remotes...\n`);
+console.log("Fetching remotes...\n");
 run("git", ["fetch", "--prune", "origin"]);
 
 if (useUpstream) {
+  if (localRemoteBranchExists("origin", branch)) {
+    pullRemote("origin", branch);
+    pulled++;
+  }
+
   ensureUpstreamRemote();
   run("git", ["fetch", "--prune", UPSTREAM_REMOTE]);
 
-  if (!remoteBranchExists(UPSTREAM_REMOTE, UPSTREAM_BRANCH)) {
+  if (!localRemoteBranchExists(UPSTREAM_REMOTE, UPSTREAM_BRANCH)) {
     console.error(`Remote branch ${UPSTREAM_REMOTE}/${UPSTREAM_BRANCH} not found.`);
     process.exit(1);
   }
 
   pullRemote(UPSTREAM_REMOTE, UPSTREAM_BRANCH);
-} else if (remoteBranchExists("origin", branch)) {
+  pulled++;
+} else if (localRemoteBranchExists("origin", branch)) {
   pullRemote("origin", branch);
+  pulled++;
 } else {
   console.log(
-    `No origin/${branch} on the remote — fetching only. Pass --upstream to merge ${UPSTREAM_REMOTE}/${UPSTREAM_BRANCH}.\n`,
+    `No origin/${branch} on the remote — fetched only. Pass --upstream to merge ${UPSTREAM_REMOTE}/${UPSTREAM_BRANCH}.\n`,
   );
 }
 
 console.log("\nInstalling dependencies...\n");
 run("npm", ["install"]);
 
-console.log("\nDone. Repo is up to date.\n");
+if (pulled > 0) {
+  console.log("\nDone. Repo is up to date.\n");
+} else {
+  console.log(
+    "\nDone. Fetched remotes and refreshed dependencies (no remote branch to pull).\n",
+  );
+}
