@@ -11,7 +11,8 @@
     "electron:dev": "node electron/dev.mjs",
     "electron:prepare": "node electron/prepare-standalone.mjs",
     "electron:pack": "npm run build && npm run electron:prepare && electron-builder --dir",
-    "electron:dist": "npm run build && npm run electron:prepare && electron-builder"
+    "electron:dist": "npm run build && npm run electron:prepare && electron-builder",
+    "update": "node update.mjs"
   },
   "dependencies": {
     "katex": "^0.17.0",

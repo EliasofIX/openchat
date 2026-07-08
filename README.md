@@ -28,6 +28,17 @@ Open <http://localhost:3000>.
 Get an OpenRouter key at <https://openrouter.ai/keys>. The free tier has dozens
 of models you can use immediately — see <https://openrouter.ai/models>.
 
+### Staying up to date
+
+```bash
+npm run update                 # git pull + npm install
+npm run update -- --upstream   # merge latest upstream/main (for forks)
+```
+
+`./update.sh` works the same way. The script refuses to run with uncommitted
+changes unless you pass `--force`. Add `--rebase` to rebase onto the remote
+branch instead of merging.
+
 ---
 
 ## Project layout
@@ -153,6 +164,7 @@ you can add what fits your stack:
 npm run dev      # local dev server (Turbopack)
 npm run build    # production build
 npm run start    # serve the production build
+npm run update   # pull latest code + npm install
 ```
 
 ### Desktop (Electron)
