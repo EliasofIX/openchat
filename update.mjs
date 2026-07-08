@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const UPSTREAM_URL = "https://github.com/eliasofix/openchat.git";
+const UPSTREAM_URL = "https://github.com/EliasofIX/openchat.git";
 const UPSTREAM_REMOTE = "upstream";
 const UPSTREAM_BRANCH = "main";
 
