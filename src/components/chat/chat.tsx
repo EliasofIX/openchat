@@ -144,17 +144,38 @@ export function Chat() {
     setSettingsOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (!conv.hydrated) return;
-    const id = conv.activeId ?? null;
-    if (id !== lastLoadedId.current) {
+  const loadConversation = useCallback(
+    (id: string | null) => {
       lastLoadedId.current = id;
-      const active = conv.conversations.find((c) => c.id === id);
+      const active = id ? conv.conversations.find((c) => c.id === id) : null;
       setMessages(active?.messages ?? []);
       setVisibleCount(VISIBLE_MESSAGE_LIMIT);
       stickToBottomRef.current = true;
+    },
+    [conv.conversations, setMessages],
+  );
+
+  useEffect(() => {
+    if (!conv.hydrated) return;
+    const id = conv.activeId ?? null;
+    if (id === lastLoadedId.current) return;
+    // upsertActive assigns activeId on the first persist of a new chat. Reloading
+    // here would bump streamGen and abort the in-flight reply before tokens land.
+    if (chat.isStreaming && lastLoadedId.current === null && id !== null) {
+      lastLoadedId.current = id;
+      return;
     }
-  }, [conv.hydrated, conv.activeId, conv.conversations, setMessages]);
+    loadConversation(id);
+  }, [conv.hydrated, conv.activeId, conv.conversations, chat.isStreaming, loadConversation]);
+
+  const selectConversation = useCallback(
+    (id: string) => {
+      if (id === conv.activeId) return;
+      conv.select(id);
+      loadConversation(id);
+    },
+    [conv, loadConversation],
+  );
 
   const hiddenCount = Math.max(0, chat.messages.length - visibleCount);
   const visibleMessages =
@@ -182,6 +203,7 @@ export function Chat() {
 
   const newChat = () => {
     chat.setMessages([]);
+    lastLoadedId.current = null;
     conv.createNew();
     lastUpsertRef.current = null;
     attachmentsHook.clear();
@@ -202,7 +224,7 @@ export function Chat() {
           onNewChat={newChat}
           conversations={conv.conversations}
           activeId={conv.activeId}
-          onSelect={(id) => conv.select(id)}
+          onSelect={selectConversation}
           onDelete={conv.remove}
           onOpenSettings={() => openSettings("general")}
         />
