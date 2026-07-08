@@ -170,6 +170,7 @@ export function Chat() {
 
   const selectConversation = useCallback(
     (id: string) => {
+      if (id === conv.activeId) return;
       conv.select(id);
       loadConversation(id);
     },
