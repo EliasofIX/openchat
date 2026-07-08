@@ -161,7 +161,7 @@ export function Chat() {
     if (id === lastLoadedId.current) return;
     // upsertActive assigns activeId on the first persist of a new chat. Reloading
     // here would bump streamGen and abort the in-flight reply before tokens land.
-    if (chat.isStreaming) {
+    if (chat.isStreaming && lastLoadedId.current === null && id !== null) {
       lastLoadedId.current = id;
       return;
     }

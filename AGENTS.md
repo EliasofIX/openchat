@@ -72,7 +72,7 @@ Browser (use-chat)
 
 There is **no SSE framing, no JSON envelope protocol, no SDK** between model and browser. Read `src/app/api/chat/route.ts` and `src/hooks/use-chat.ts` together — that is the whole streaming layer.
 
-- **In-flight streams:** `use-chat` bumps a generation counter on `setMessages` (conversation switch / load) and aborts the fetch; flush/finish/persist callbacks must no-op when their captured generation is stale — otherwise a reply started in chat A can be saved into chat B. `chat.tsx` must not call `setMessages` (the aborting `setAll`) when `upsertActive` assigns `activeId` mid-stream on the first persist of a new chat — only sync `lastLoadedId`; sidebar selects still load explicitly via `setAll`.
+- **In-flight streams:** `use-chat` bumps a generation counter on `setMessages` (conversation switch / load) and aborts the fetch; flush/finish/persist callbacks must no-op when their captured generation is stale — otherwise a reply started in chat A can be saved into chat B. `chat.tsx` must not call `setMessages` (the aborting `setAll`) when `upsertActive` assigns `activeId` mid-stream on the first persist of a new chat (`lastLoadedId === null` → new id) — only sync `lastLoadedId`; deletions and sidebar selects still load via `setAll`.
 - **Upstream abort:** Thread `req.signal` into `ai-client.stream()` and abort in the route's `ReadableStream.cancel()` so Stop doesn't leave OpenRouter/Ollama streaming until `maxDuration`.
 - **Model capabilities:** POST BYOK keys in the request body (`/api/models/capabilities`) — never in query strings.
 
