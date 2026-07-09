@@ -2,8 +2,9 @@
 // prompt-cache — OpenRouter input (prompt) token caching helpers.
 //
 // Applies session_id sticky routing, Anthropic automatic cache_control, and
-// explicit per-block breakpoints for large attachments / system prompts on
-// providers that require them (Gemini, Qwen, Alibaba).
+// explicit per-block breakpoints for large attachments on providers that
+// require them (Gemini, Qwen, Alibaba). Dynamic memory context lives in a
+// separate user message (see system-prompt.ts), not in the system message.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ChatContentPart, ChatMessage, ChatToolDefinition } from "@/lib/ai-client";
@@ -24,6 +25,8 @@ export type ApplyPromptCacheResult = {
   cache_control?: CacheControl;
   session_id?: string;
   stream_options: { include_usage: true };
+  belowMinimum?: boolean;
+  minTokens?: number;
 };
 
 const CHARS_PER_TOKEN = 4;
@@ -44,6 +47,27 @@ export function promptCachingModeForModel(model: string): PromptCachingMode {
     return "implicit";
   }
   return "implicit";
+}
+
+export function resolvePromptCachingMode(
+  model: string,
+  capabilitiesMode?: PromptCachingMode,
+): PromptCachingMode {
+  if (capabilitiesMode && capabilitiesMode !== "none") return capabilitiesMode;
+  return promptCachingModeForModel(model);
+}
+
+/**
+ * Sticky-routing session key for OpenRouter. Omit when there is no conversation
+ * yet — never stringify a null id into `"null:<model>"`.
+ */
+export function buildCacheSessionId(
+  conversationId: string | null | undefined,
+  model: string,
+): string | undefined {
+  const id = conversationId?.trim();
+  if (!id) return undefined;
+  return `${id}:${model.trim().toLowerCase()}`;
 }
 
 export function isAnthropicModel(model: string): boolean {
@@ -91,17 +115,7 @@ function textPart(text: string, cacheControl?: CacheControl): ChatContentPart {
   return part;
 }
 
-function splitSystemPrompt(content: string): { stable: string; dynamic: string } {
-  const marker = "The following are things you should remember";
-  const idx = content.indexOf(marker);
-  if (idx === -1) return { stable: content, dynamic: "" };
-  return {
-    stable: content.slice(0, idx).trimEnd(),
-    dynamic: content.slice(idx).trimStart(),
-  };
-}
-
-function systemMessageWithBreakpoints(
+function systemMessageWithBreakpoint(
   message: ChatMessage,
   cacheControl: CacheControl,
   minChars: number,
@@ -113,20 +127,7 @@ function systemMessageWithBreakpoints(
   const trimmed = message.content.trim();
   if (!trimmed || trimmed.length < minChars) return message;
 
-  const { stable, dynamic } = splitSystemPrompt(trimmed);
-  if (dynamic && stable.length >= minChars / 2) {
-    const parts: ChatContentPart[] = [
-      textPart(stable, cacheControl),
-      textPart(dynamic),
-    ];
-    return { ...message, content: parts };
-  }
-
-  if (trimmed.length >= minChars) {
-    return { ...message, content: [textPart(trimmed, cacheControl)] };
-  }
-
-  return message;
+  return { ...message, content: [textPart(trimmed, cacheControl)] };
 }
 
 function splitAttachmentString(
@@ -192,14 +193,22 @@ function addExplicitBreakpoints(
   messages: ChatMessage[],
   cacheControl: CacheControl,
   minChars: number,
+  mode: PromptCachingMode,
 ): ChatMessage[] {
   let breakpoints = 0;
 
   return messages.map((message, index) => {
     if (breakpoints >= MAX_EXPLICIT_BREAKPOINTS) return message;
 
-    if (message.role === "system" && index === 0 && typeof message.content === "string") {
-      const next = systemMessageWithBreakpoints(message, cacheControl, minChars);
+    // Anthropic auto mode uses top-level cache_control — reserve explicit slots
+    // for large attachments only.
+    if (
+      mode === "explicit" &&
+      message.role === "system" &&
+      index === 0 &&
+      typeof message.content === "string"
+    ) {
+      const next = systemMessageWithBreakpoint(message, cacheControl, minChars);
       if (next.content !== message.content) breakpoints += 1;
       return next;
     }
@@ -221,39 +230,45 @@ export function applyPromptCache(input: {
   settings?: PromptCachingSettings;
   sessionId?: string;
   tools?: ChatToolDefinition[];
+  cachingMode?: PromptCachingMode;
 }): ApplyPromptCacheResult | null {
-  const { provider, model, messages, settings, sessionId, tools } = input;
+  const { provider, model, messages, settings, sessionId, tools, cachingMode } =
+    input;
 
   if (!shouldEnablePromptCache(provider, settings)) return null;
 
-  const mode = promptCachingModeForModel(model);
+  const mode = resolvePromptCachingMode(model, cachingMode);
   if (mode === "none") return null;
 
   const cacheControl = buildCacheControl(settings?.ttl ?? "5m");
-  const minChars = minCacheableTokens(model) * CHARS_PER_TOKEN;
+  const minTokens = minCacheableTokens(model);
+  const minChars = minTokens * CHARS_PER_TOKEN;
 
   const totalChars =
     messages.reduce((sum, m) => sum + textLength(m.content), 0) +
     (tools?.reduce((sum, t) => sum + JSON.stringify(t).length, 0) ?? 0);
 
-  if (estimateTokens(totalChars) < minCacheableTokens(model)) {
-    return {
-      messages,
-      session_id: sessionId?.trim() || undefined,
-      stream_options: { include_usage: true },
-    };
-  }
+  const belowMinimum = estimateTokens(totalChars) < minTokens;
+  const base: ApplyPromptCacheResult = {
+    messages,
+    session_id: sessionId?.trim() || undefined,
+    stream_options: { include_usage: true },
+    belowMinimum,
+    minTokens,
+  };
+
+  if (belowMinimum) return base;
 
   let nextMessages = messages;
 
   if (mode === "explicit" || mode === "auto") {
-    nextMessages = addExplicitBreakpoints(messages, cacheControl, minChars);
+    nextMessages = addExplicitBreakpoints(messages, cacheControl, minChars, mode);
   }
 
   const result: ApplyPromptCacheResult = {
+    ...base,
     messages: nextMessages,
-    session_id: sessionId?.trim() || undefined,
-    stream_options: { include_usage: true },
+    belowMinimum: false,
   };
 
   if (mode === "auto") {

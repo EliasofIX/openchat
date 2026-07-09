@@ -13,11 +13,14 @@
 import "katex/dist/katex.min.css";
 
 import {
+  Children,
+  isValidElement,
   memo,
   useDeferredValue,
   useMemo,
   useState,
   type ComponentPropsWithoutRef,
+  type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -66,37 +69,64 @@ function CodeBlock({ className, children }: { className?: string; children: stri
   );
 }
 
-type CodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
+type CodeProps = ComponentPropsWithoutRef<"code">;
 
+function codeText(children: ReactNode): string {
+  return String(children ?? "").replace(/\n$/, "");
+}
+
+function isDisplayMath(className: string | undefined, text: string): boolean {
+  return (
+    Boolean(className?.includes("math-display")) ||
+    isMathCodeLanguage(className) ||
+    text.includes("\n") ||
+    /\\begin\{/.test(text)
+  );
+}
+
+// react-markdown v10 dropped the `inline` prop on `code`. Block fences are
+// always wrapped in `pre`; inline backticks are not. Render blocks from `pre`
+// so a `<div>` CodeBlock never lands inside a `<p>`.
 const MARKDOWN_COMPONENTS = {
   code(props: CodeProps) {
-    const { inline, className, children, ...rest } = props;
-    const text = String(children ?? "").replace(/\n$/, "");
+    const { className, children, ...rest } = props;
+    const text = codeText(children);
 
     if (isMathCodeClassName(className)) {
-      const display =
-        !inline &&
-        (className?.includes("math-display") ||
-          isMathCodeLanguage(className) ||
-          text.includes("\n") ||
-          /\\begin\{/.test(text));
-      return <MathBlock content={text} display={display} />;
+      return <MathBlock content={text} display={isDisplayMath(className, text)} />;
     }
 
-    if (inline) {
-      return (
-        <code
-          className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em]"
-          {...rest}
-        >
-          {children}
-        </code>
-      );
-    }
-    return <CodeBlock className={className}>{text}</CodeBlock>;
+    return (
+      <code
+        className={cn(
+          "rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em]",
+          className,
+        )}
+        {...rest}
+      >
+        {children}
+      </code>
+    );
   },
-  pre({ children }: { children?: React.ReactNode }) {
-    return <>{children}</>;
+  pre({ children }: { children?: ReactNode }) {
+    const child = Children.toArray(children)[0];
+    if (!isValidElement<{ className?: string; children?: ReactNode }>(child)) {
+      return <>{children}</>;
+    }
+
+    // MathBlock (and anything else already upgraded) — pass through.
+    if (typeof child.type !== "string") {
+      return <>{children}</>;
+    }
+
+    const className = child.props.className;
+    const text = codeText(child.props.children);
+
+    if (isMathCodeClassName(className)) {
+      return <MathBlock content={text} display={isDisplayMath(className, text)} />;
+    }
+
+    return <CodeBlock className={className}>{text}</CodeBlock>;
   },
 };
 

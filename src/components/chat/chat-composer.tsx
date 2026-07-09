@@ -19,6 +19,8 @@ type Props = {
   messages: Message[];
   isStreaming: boolean;
   systemPrompt?: string;
+  /** Injected memory user message — counted separately from system. */
+  memoryContext?: string;
   contextTokens: number | null;
   promptCachingMode?: PromptCachingMode;
   lastCacheUsage?: PromptCacheUsage | null;
@@ -50,6 +52,7 @@ export function ChatComposer({
   messages,
   isStreaming,
   systemPrompt,
+  memoryContext,
   contextTokens,
   promptCachingMode = "none",
   lastCacheUsage = null,
@@ -93,6 +96,7 @@ export function ChatComposer({
   const contextUsage = useContextUsage({
     messages: meterMessages,
     systemPrompt,
+    memoryContext,
     draftText: deferredInput,
     draftAttachments,
     contextTokens,
@@ -165,6 +169,7 @@ export function ChatComposer({
               loading={modelCapabilitiesLoading}
               promptCaching={settings.promptCaching}
               promptCachingMode={promptCachingMode}
+              model={activeModel}
             />
             {capabilityWarning}
             {memoryWarning}
@@ -189,6 +194,7 @@ export function ChatComposer({
               loading={modelCapabilitiesLoading}
               promptCaching={settings.promptCaching}
               promptCachingMode={promptCachingMode}
+              model={activeModel}
             />
             {capabilityWarning}
             {memoryWarning}

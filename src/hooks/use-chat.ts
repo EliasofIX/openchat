@@ -48,6 +48,7 @@ export type ChatStatus = "idle" | "streaming" | "error";
 export type UseChatOptions = {
   initialMessages?: Message[];
   systemPrompt?: string;
+  memoryContext?: string;
   provider?: ModelProvider;
   model?: string;
   apiKey?: string;
@@ -55,6 +56,7 @@ export type UseChatOptions = {
   reasoning?: ReasoningSettings;
   memoryEnabled?: boolean;
   promptCaching?: PromptCachingSettings;
+  promptCachingMode?: import("@/lib/prompt-cache").PromptCachingMode;
   sessionId?: string | null;
   onSaveMemory?: (content: string) => SaveMemoryResult;
   onFinish?: (assistantMessage: Message, allMessages: Message[]) => void;
@@ -70,7 +72,6 @@ type StreamPart =
 type ApiPayloadMessage = {
   role: "user" | "assistant" | "tool";
   content?: string | ReturnType<typeof buildApiContent> | null;
-  reasoning?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 };
@@ -123,16 +124,12 @@ function toWireToolCall(call: CompletedToolCall): ToolCall {
 function toApiMessage(m: Message): {
   role: Message["role"];
   content: ReturnType<typeof buildApiContent>;
-  reasoning?: string;
 } {
   const content =
     m.role === "user" && m.attachments?.length
       ? buildApiContent(m.content, m.attachments)
       : m.content;
 
-  if (m.role === "assistant" && m.reasoning) {
-    return { role: m.role, content, reasoning: m.reasoning };
-  }
   return { role: m.role, content };
 }
 
@@ -150,6 +147,7 @@ function reconcileAssistantText(
 export function useChat(options: UseChatOptions = {}) {
   const {
     systemPrompt,
+    memoryContext,
     provider,
     model,
     apiKey,
@@ -157,6 +155,7 @@ export function useChat(options: UseChatOptions = {}) {
     reasoning,
     memoryEnabled,
     promptCaching,
+    promptCachingMode,
     sessionId,
     onSaveMemory,
     onFinish,
@@ -170,6 +169,7 @@ export function useChat(options: UseChatOptions = {}) {
 
   const messagesRef = useRef(messages);
   const systemPromptRef = useRef(systemPrompt);
+  const memoryContextRef = useRef(memoryContext);
   const providerRef = useRef(provider);
   const modelRef = useRef(model);
   const apiKeyRef = useRef(apiKey);
@@ -177,6 +177,7 @@ export function useChat(options: UseChatOptions = {}) {
   const reasoningRef = useRef(reasoning);
   const memoryEnabledRef = useRef(memoryEnabled);
   const promptCachingRef = useRef(promptCaching);
+  const promptCachingModeRef = useRef(promptCachingMode);
   const sessionIdRef = useRef(sessionId);
   const onSaveMemoryRef = useRef(onSaveMemory);
   const onFinishRef = useRef(onFinish);
@@ -187,6 +188,7 @@ export function useChat(options: UseChatOptions = {}) {
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { systemPromptRef.current = systemPrompt; }, [systemPrompt]);
+  useEffect(() => { memoryContextRef.current = memoryContext; }, [memoryContext]);
   useEffect(() => { providerRef.current = provider; }, [provider]);
   useEffect(() => { modelRef.current = model; }, [model]);
   useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
@@ -194,6 +196,7 @@ export function useChat(options: UseChatOptions = {}) {
   useEffect(() => { reasoningRef.current = reasoning; }, [reasoning]);
   useEffect(() => { memoryEnabledRef.current = memoryEnabled; }, [memoryEnabled]);
   useEffect(() => { promptCachingRef.current = promptCaching; }, [promptCaching]);
+  useEffect(() => { promptCachingModeRef.current = promptCachingMode; }, [promptCachingMode]);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { onSaveMemoryRef.current = onSaveMemory; }, [onSaveMemory]);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
@@ -366,18 +369,31 @@ export function useChat(options: UseChatOptions = {}) {
       let followUpMessages: ApiPayloadMessage[] = [];
       let toolExecutions = 0;
 
+      // Freeze prompt context for the whole send — memory saves during tool
+      // rounds must not bust the cacheable prefix on follow-up HTTP requests.
+      const frozenSystemPrompt = systemPromptRef.current;
+      const frozenMemoryContext = memoryContextRef.current;
+
       while (true) {
         if (isStale()) return;
 
         const payload: Record<string, unknown> = {
-          systemPrompt: systemPromptRef.current,
+          systemPrompt: frozenSystemPrompt,
           messages: [...baseApiMessages, ...followUpMessages],
           provider: providerRef.current ?? "openrouter",
           memoryEnabled: Boolean(memoryEnabledRef.current),
         };
 
+        if (frozenMemoryContext) {
+          payload.memoryContext = frozenMemoryContext;
+        }
+
         if (promptCachingRef.current) {
           payload.promptCaching = promptCachingRef.current;
+        }
+
+        if (promptCachingModeRef.current) {
+          payload.promptCachingMode = promptCachingModeRef.current;
         }
 
         const resolvedSessionId = sessionIdRef.current?.trim();

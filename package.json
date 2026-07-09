@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --experimental-strip-types --import ./scripts/register-ts-paths.mjs --test src/lib/*.test.ts",
     "postinstall": "mkdir -p public && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs",
     "electron:dev": "node electron/dev.mjs",
     "electron:prepare": "node electron/prepare-standalone.mjs",

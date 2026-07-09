@@ -17,6 +17,7 @@ type OpenRouterModelsResponse = {
     top_provider?: {
       context_length?: number | null;
     };
+    supported_parameters?: string[] | null;
   }>;
 };
 

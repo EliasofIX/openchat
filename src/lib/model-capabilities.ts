@@ -14,7 +14,10 @@ export const DEFAULT_CAPABILITIES: ModelCapabilities = {
   vision: false,
   code: true,
   pdf: true,
-  tools: true,
+  // Opt-in once we know the model supports tools — sending `tools` to a
+  // model without them makes OpenRouter 404 ("No endpoints found that
+  // support tool use").
+  tools: false,
   contextTokens: null,
   promptCaching: "none",
 };
@@ -49,6 +52,8 @@ type OpenRouterModel = {
   top_provider?: {
     context_length?: number | null;
   };
+  /** OpenAI-compatible request params this model accepts (e.g. `tools`). */
+  supported_parameters?: string[] | null;
 };
 
 function contextLengthFromOpenRouterModel(
@@ -66,11 +71,12 @@ export function capabilitiesFromOpenRouterModel(
   model: OpenRouterModel | null | undefined,
 ): ModelCapabilities {
   const modalities = model?.architecture?.input_modalities ?? [];
+  const supported = model?.supported_parameters ?? [];
   return {
     vision: modalities.includes("image"),
     code: true,
     pdf: true,
-    tools: true,
+    tools: supported.includes("tools"),
     contextTokens: contextLengthFromOpenRouterModel(model),
     promptCaching: promptCachingModeForModel(model?.id ?? ""),
   };

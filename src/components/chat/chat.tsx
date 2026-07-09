@@ -7,7 +7,7 @@ import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
 import type { SettingsTab, SettingsScrollTarget } from "./settings-dialog";
 import { useChat } from "@/hooks/use-chat";
-import type { PromptCacheUsage } from "@/lib/prompt-cache";
+import { buildCacheSessionId, type PromptCacheUsage } from "@/lib/prompt-cache";
 import { useAttachments } from "@/hooks/use-attachments";
 import { useLowPower } from "@/hooks/use-low-power";
 import { useModelCapabilities } from "@/hooks/use-model-capabilities";
@@ -15,7 +15,8 @@ import { useConversations } from "@/hooks/use-conversations";
 import { useSidebarOpen } from "@/hooks/use-sidebar-open";
 import { useColorAccent } from "@/hooks/use-color-accent";
 import { useVisualViewport } from "@/hooks/use-visual-viewport";
-import { buildSystemPrompt, useSettings } from "@/hooks/use-settings";
+import { buildStableSystemPrompt, useSettings } from "@/hooks/use-settings";
+import { buildMemoryContextContent } from "@/lib/system-prompt";
 import { useMemories } from "@/hooks/use-memories";
 import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
 import { getActiveModel } from "@/lib/providers";
@@ -53,14 +54,24 @@ export function Chat() {
   });
 
   const memoryToolsAvailable = modelCapabilities.capabilities.tools;
+  // Wait for capabilities so we never send `tools` while still on the
+  // conservative default (tools: false) flip — or worse, a stale true.
   const memoryEnabled =
-    settingsHook.settings.memory.enabled && memoryToolsAvailable;
+    settingsHook.settings.memory.enabled &&
+    !modelCapabilities.loading &&
+    memoryToolsAvailable;
   const memoryToolsUnavailable =
     settingsHook.settings.memory.enabled &&
     !modelCapabilities.loading &&
     !memoryToolsAvailable;
 
-  const systemPrompt = buildSystemPrompt(settingsHook.settings, memoriesHook.memories);
+  // Stable system for chat + meter; memories are a separate upstream user msg.
+  const stableSystemPrompt = buildStableSystemPrompt(settingsHook.settings);
+  const memoryContext = buildMemoryContextContent(
+    memoriesHook.memories,
+    settingsHook.settings.memory.enabled,
+  );
+  const cacheSessionId = buildCacheSessionId(conv.activeId, activeModel);
   const settingsRef = useRef(settingsHook.settings);
   const convRef = useRef(conv);
   const lastUpsertRef = useRef<{ id: string; aiTitleGenerated: boolean } | null>(null);
@@ -82,10 +93,11 @@ export function Chat() {
 
   useEffect(() => {
     setLastCacheUsage(null);
-  }, [conv.activeId]);
+  }, [conv.activeId, activeModel]);
 
   const chat = useChat({
-    systemPrompt,
+    systemPrompt: stableSystemPrompt,
+    memoryContext,
     provider: settingsHook.settings.provider,
     model: activeModel,
     apiKey: settingsHook.settings.openRouterApiKey,
@@ -93,7 +105,8 @@ export function Chat() {
     reasoning: settingsHook.settings.reasoning,
     memoryEnabled,
     promptCaching: settingsHook.settings.promptCaching,
-    sessionId: conv.activeId,
+    promptCachingMode: modelCapabilities.capabilities.promptCaching,
+    sessionId: cacheSessionId,
     onCacheUsage: setLastCacheUsage,
     onSaveMemory: (content) => memoriesHook.tryAdd(content, "agent"),
     onFinish: (_msg, all) => {
@@ -343,7 +356,8 @@ export function Chat() {
         <ChatComposer
           messages={chat.messages}
           isStreaming={chat.isStreaming}
-          systemPrompt={systemPrompt}
+          systemPrompt={stableSystemPrompt}
+          memoryContext={memoryContext}
           contextTokens={modelCapabilities.capabilities.contextTokens}
           promptCachingMode={modelCapabilities.capabilities.promptCaching}
           lastCacheUsage={lastCacheUsage}

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,20 @@ if (!existsSync(envLocal) && existsSync(envExample)) {
   console.log(
     "Created .env.local from .env.example — add your OPENROUTER_API_KEY before chatting.\n",
   );
+} else if (existsSync(envLocal)) {
+  // Soft check: empty OPENROUTER_API_KEY is the usual cause of OpenRouter 401s.
+  try {
+    const envText = readFileSync(envLocal, "utf8");
+    const match = envText.match(/^OPENROUTER_API_KEY=(.*)$/m);
+    const value = match?.[1]?.trim().replace(/^["']|["']$/g, "") ?? "";
+    if (!value) {
+      console.log(
+        "Warning: OPENROUTER_API_KEY is empty in .env.local — set it (or a key in Settings) before using OpenRouter.\n",
+      );
+    }
+  } catch {
+    // Ignore — env is optional when using Ollama / BYOK settings.
+  }
 }
 
 console.log("Starting dev server at http://localhost:3000\n");

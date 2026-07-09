@@ -11,6 +11,7 @@ import type { Message, MessageAttachment } from "@/lib/types";
 type Options = {
   messages: Message[];
   systemPrompt?: string;
+  memoryContext?: string;
   draftText?: string;
   draftAttachments?: MessageAttachment[];
   contextTokens: number | null;
@@ -31,6 +32,7 @@ export function useContextUsage(options: Options): ContextUsageState {
   const {
     messages,
     systemPrompt,
+    memoryContext,
     draftText,
     draftAttachments,
     contextTokens,
@@ -40,6 +42,7 @@ export function useContextUsage(options: Options): ContextUsageState {
   return useMemo(() => {
     const breakdown = estimateContextBreakdown({
       systemPrompt,
+      memoryContext,
       messages,
       draftText,
       draftAttachments,
@@ -54,6 +57,7 @@ export function useContextUsage(options: Options): ContextUsageState {
   }, [
     messages,
     systemPrompt,
+    memoryContext,
     draftText,
     draftAttachments,
     contextTokens,

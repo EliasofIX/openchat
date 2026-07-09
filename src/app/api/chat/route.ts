@@ -7,6 +7,8 @@
 
 import {
   createAiClient,
+  UpstreamHttpError,
+  type ChatCompletionChunk,
   type ChatCompletionDelta,
   type ChatMessage,
   type ToolCall,
@@ -61,12 +63,15 @@ type ChatRequest = {
   provider?: ModelProvider;
   model?: string;
   systemPrompt?: string;
+  /** Dynamic memory list — injected as a user message, not in system. */
+  memoryContext?: string;
   apiKey?: string;
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
   memoryEnabled?: boolean;
   promptCaching?: PromptCachingSettings;
   sessionId?: string;
+  promptCachingMode?: import("@/lib/prompt-cache").PromptCachingMode;
 };
 
 type StreamPart = "content" | "reasoning";
@@ -94,10 +99,21 @@ function toUpstreamMessage(message: ApiChatMessage): ChatMessage {
     role: message.role,
     content: message.content ?? null,
   };
-  if (message.reasoning) base.reasoning = message.reasoning;
   if (message.tool_calls?.length) base.tool_calls = message.tool_calls;
   if (message.tool_call_id) base.tool_call_id = message.tool_call_id;
   return base;
+}
+
+function assembleUpstreamMessages(
+  systemPrompt: string | undefined,
+  memoryContext: string | undefined,
+  messages: ApiChatMessage[],
+): ChatMessage[] {
+  const upstream: ChatMessage[] = [];
+  if (systemPrompt) upstream.push({ role: "system", content: systemPrompt });
+  if (memoryContext) upstream.push({ role: "user", content: memoryContext });
+  upstream.push(...messages.map(toUpstreamMessage));
+  return upstream;
 }
 
 function extractDeltaReasoning(delta: ChatCompletionDelta | undefined | null): string {
@@ -163,6 +179,16 @@ function createOllamaClient(baseUrl: string) {
   });
 }
 
+function upstreamErrorResponse(err: unknown, providerLabel: string): Response {
+  if (err instanceof UpstreamHttpError) {
+    const status =
+      err.status >= 400 && err.status < 600 ? err.status : 502;
+    return new Response(`${providerLabel}: ${err.message}`, { status });
+  }
+  const message = err instanceof Error ? err.message : "Unknown upstream error.";
+  return new Response(`${providerLabel}: ${message}`, { status: 502 });
+}
+
 export async function POST(req: Request) {
   let body: ChatRequest;
   try {
@@ -175,6 +201,7 @@ export async function POST(req: Request) {
     messages,
     model,
     systemPrompt,
+    memoryContext,
     apiKey,
     ollamaBaseUrl,
     reasoning,
@@ -182,6 +209,7 @@ export async function POST(req: Request) {
     memoryEnabled,
     promptCaching,
     sessionId,
+    promptCachingMode,
   } = body;
   const provider = resolveProvider(providerInput);
   const toolsEnabled = Boolean(memoryEnabled);
@@ -191,9 +219,11 @@ export async function POST(req: Request) {
     return new Response("`messages` must be a non-empty array.", { status: 400 });
   }
 
-  const fullMessages: ChatMessage[] = systemPrompt
-    ? [{ role: "system", content: systemPrompt }, ...messages.map(toUpstreamMessage)]
-    : messages.map(toUpstreamMessage);
+  const fullMessages = assembleUpstreamMessages(
+    systemPrompt,
+    memoryContext,
+    messages,
+  );
 
   const resolvedModel =
     provider === "ollama"
@@ -220,6 +250,7 @@ export async function POST(req: Request) {
     settings: promptCaching,
     sessionId,
     tools: toolsEnabled ? MEMORY_TOOLS : undefined,
+    cachingMode: promptCachingMode,
   });
   const cachedUpstreamMessages = promptCacheParams?.messages ?? upstreamMessages;
   const upstreamAbort = new AbortController();
@@ -228,7 +259,7 @@ export async function POST(req: Request) {
   else req.signal.addEventListener("abort", onClientAbort, { once: true });
 
   const streamSignal = { signal: upstreamAbort.signal };
-  let upstream: AsyncGenerator<import("@/lib/ai-client").ChatCompletionChunk>;
+  let upstream: AsyncGenerator<ChatCompletionChunk>;
 
   if (provider === "ollama") {
     const baseUrl = normalizeOllamaBaseUrl(
@@ -245,7 +276,8 @@ export async function POST(req: Request) {
     const client = createOllamaClient(baseUrl);
 
     try {
-      upstream = client.stream(
+      // Await the HTTP handshake so 4xx/5xx become a Response, not a mid-stream pipe error.
+      upstream = await client.stream(
         {
           model: resolvedModel,
           messages: upstreamMessages,
@@ -255,8 +287,7 @@ export async function POST(req: Request) {
         streamSignal,
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown upstream error.";
-      return new Response(`Ollama error: ${message}`, { status: 502 });
+      return upstreamErrorResponse(err, "Ollama error");
     }
   } else {
     const resolvedKey = apiKey?.trim() || process.env.OPENROUTER_API_KEY;
@@ -272,7 +303,7 @@ export async function POST(req: Request) {
     const reasoningParam = buildOpenRouterReasoning(reasoning, resolvedModel);
 
     try {
-      upstream = client.stream(
+      upstream = await client.stream(
         {
           model: resolvedModel,
           messages: cachedUpstreamMessages,
@@ -291,8 +322,7 @@ export async function POST(req: Request) {
         streamSignal,
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown upstream error.";
-      return new Response(`OpenRouter error: ${message}`, { status: 502 });
+      return upstreamErrorResponse(err, "OpenRouter error");
     }
   }
 
@@ -303,6 +333,37 @@ export async function POST(req: Request) {
       const toolCalls = toolsEnabled ? createToolCallAccumulator() : null;
       let sawDedicatedReasoning = false;
       let cacheUsage: ReturnType<typeof parseCacheUsage> = null;
+      let streamClosed = false;
+
+      const emitCacheUsage = () => {
+        if (!promptCachingEnabled || !cacheUsage || !useNdjson || streamClosed) {
+          return;
+        }
+        try {
+          controller.enqueue(
+            encodeUsage(
+              cacheUsage.cachedTokens,
+              cacheUsage.cacheWriteTokens,
+              cacheUsage.promptTokens,
+            ),
+          );
+        } catch {
+          // Stream may already be closed.
+        }
+      };
+
+      const closeStream = () => {
+        if (streamClosed) return;
+        // Emit usage while the stream is still open — emitCacheUsage bails
+        // when streamClosed is already true.
+        emitCacheUsage();
+        streamClosed = true;
+        try {
+          controller.close();
+        } catch {
+          // Already closed.
+        }
+      };
 
       try {
         for await (const chunk of upstream) {
@@ -378,22 +439,13 @@ export async function POST(req: Request) {
           }
         }
 
-        if (promptCachingEnabled && cacheUsage && useNdjson) {
-          controller.enqueue(
-            encodeUsage(
-              cacheUsage.cachedTokens,
-              cacheUsage.cacheWriteTokens,
-              cacheUsage.promptTokens,
-            ),
-          );
-        }
-
-        controller.close();
+        closeStream();
       } catch (err) {
         if ((err as Error).name === "AbortError" || upstreamAbort.signal.aborted) {
-          controller.close();
+          closeStream();
           return;
         }
+        streamClosed = true;
         controller.error(err);
       }
     },

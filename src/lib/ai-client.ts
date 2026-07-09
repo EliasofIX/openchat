@@ -97,6 +97,80 @@ export type AiRequestOptions = {
   signal?: AbortSignal;
 };
 
+/** Thrown when the provider rejects the request before any tokens stream. */
+export class UpstreamHttpError extends Error {
+  readonly status: number;
+  readonly body: string;
+
+  constructor(status: number, body: string) {
+    super(formatUpstreamError(status, body));
+    this.name = "UpstreamHttpError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+function formatUpstreamError(status: number, body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return `Upstream request failed (${status}).`;
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      error?: { message?: string; code?: number | string };
+      message?: string;
+    };
+    const message = parsed.error?.message ?? parsed.message;
+    if (typeof message === "string" && message.trim()) return message.trim();
+  } catch {
+    // Not JSON — fall through.
+  }
+  return trimmed;
+}
+
+async function* readSseChunks(
+  response: Response,
+  signal?: AbortSignal,
+): AsyncGenerator<ChatCompletionChunk> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Upstream response has no body.");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        await reader.cancel().catch(() => {});
+        break;
+      }
+
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data:")) continue;
+
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") return;
+
+        try {
+          yield JSON.parse(payload) as ChatCompletionChunk;
+        } catch {
+          // Skip malformed SSE chunks.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOptions) {
   const root = baseURL.replace(/\/$/, "");
 
@@ -109,6 +183,7 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
+        ...(body.session_id ? { "x-session-id": body.session_id } : {}),
         ...headers,
       },
       body: JSON.stringify(body),
@@ -117,7 +192,7 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(text || `Upstream request failed (${response.status}).`);
+      throw new UpstreamHttpError(response.status, text);
     }
 
     return response.json() as Promise<T>;
@@ -131,15 +206,21 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
       return request<ChatCompletionResponse>({ ...body, stream: false }, options);
     },
 
-    async *stream(
+    /**
+     * Opens the upstream SSE stream. Awaits the HTTP response first so auth /
+     * routing errors (401, 404 tools, …) reject here — not mid-pipe as
+     * "failed to pipe response".
+     */
+    async stream(
       body: Omit<ChatCompletionRequest, "stream">,
       options: AiRequestOptions = {},
-    ): AsyncGenerator<ChatCompletionChunk> {
+    ): Promise<AsyncGenerator<ChatCompletionChunk>> {
       const response = await fetch(`${root}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
+          ...(body.session_id ? { "x-session-id": body.session_id } : {}),
           ...headers,
         },
         body: JSON.stringify({ ...body, stream: true }),
@@ -148,48 +229,10 @@ export function createAiClient({ apiKey, baseURL, headers = {} }: AiClientOption
 
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        throw new Error(text || `Upstream request failed (${response.status}).`);
+        throw new UpstreamHttpError(response.status, text);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Upstream response has no body.");
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      try {
-        while (true) {
-          if (options.signal?.aborted) {
-            await reader.cancel().catch(() => {});
-            break;
-          }
-
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith("data:")) continue;
-
-            const payload = trimmed.slice(5).trim();
-            if (payload === "[DONE]") return;
-
-            try {
-              yield JSON.parse(payload) as ChatCompletionChunk;
-            } catch {
-              // Skip malformed SSE chunks.
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
+      return readSseChunks(response, options.signal);
     },
   };
 }

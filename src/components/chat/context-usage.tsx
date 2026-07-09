@@ -1,7 +1,7 @@
 "use client";
 
 import { formatTokenCount } from "@/lib/estimate-context";
-import type { PromptCachingMode } from "@/lib/prompt-cache";
+import { minCacheableTokens, type PromptCachingMode } from "@/lib/prompt-cache";
 import type { ContextUsageState } from "@/hooks/use-context-usage";
 import type { PromptCachingSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ type Props = {
   loading?: boolean;
   promptCaching?: PromptCachingSettings;
   promptCachingMode?: PromptCachingMode;
+  model?: string;
 };
 
 function promptCachingLabel(mode: PromptCachingMode): string | null {
@@ -30,12 +31,16 @@ function buildTooltip(
   usage: ContextUsageState,
   promptCaching?: PromptCachingSettings,
   promptCachingMode?: PromptCachingMode,
+  model?: string,
 ): string {
   const { breakdown, lastCacheUsage } = usage;
   const lines = [
     `System: ~${formatTokenCount(breakdown.system)}`,
-    `Messages: ~${formatTokenCount(breakdown.messages)}`,
   ];
+  if (breakdown.memory > 0) {
+    lines.push(`Memory: ~${formatTokenCount(breakdown.memory)}`);
+  }
+  lines.push(`Messages: ~${formatTokenCount(breakdown.messages)}`);
   if (breakdown.draft > 0) {
     lines.push(`Draft: ~${formatTokenCount(breakdown.draft)}`);
   }
@@ -49,6 +54,15 @@ function buildTooltip(
       "",
       `Prompt caching: ${promptCachingLabel(promptCachingMode) ?? "enabled"} (${promptCaching.ttl === "1h" ? "1 hour" : "5 min"} TTL)`,
     );
+
+    if (model) {
+      const minTokens = minCacheableTokens(model);
+      if (usage.used < minTokens) {
+        lines.push(
+          `Below ${formatTokenCount(minTokens)}-token cache minimum for this model.`,
+        );
+      }
+    }
   }
 
   if (lastCacheUsage && lastCacheUsage.promptTokens > 0) {
@@ -58,6 +72,12 @@ function buildTooltip(
       `Cached read: ${formatTokenCount(lastCacheUsage.cachedTokens)}`,
       `Cache write: ${formatTokenCount(lastCacheUsage.cacheWriteTokens)}`,
     );
+    if (
+      lastCacheUsage.cachedTokens === 0 &&
+      lastCacheUsage.cacheWriteTokens > 0
+    ) {
+      lines.push("(First turn — cache write establishes the prefix.)");
+    }
   }
 
   return lines.join("\n");
@@ -75,9 +95,10 @@ export function ContextUsage({
   loading = false,
   promptCaching,
   promptCachingMode = "none",
+  model,
 }: Props) {
   const { used, limit, hasLimit, percent, lastCacheUsage } = usage;
-  const tooltip = buildTooltip(usage, promptCaching, promptCachingMode);
+  const tooltip = buildTooltip(usage, promptCaching, promptCachingMode, model);
   const cachingActive =
     Boolean(promptCaching?.enabled) &&
     promptCachingMode !== "none" &&
@@ -90,8 +111,12 @@ export function ContextUsage({
       : `${formatTokenCount(used)} used`;
 
   const cacheSuffix =
-    !loading && lastCacheUsage && lastCacheUsage.cachedTokens > 0
-      ? ` · ${formatTokenCount(lastCacheUsage.cachedTokens)} cached`
+    !loading && lastCacheUsage
+      ? lastCacheUsage.cachedTokens > 0
+        ? ` · ${formatTokenCount(lastCacheUsage.cachedTokens)} cached`
+        : lastCacheUsage.cacheWriteTokens > 0
+          ? ` · ${formatTokenCount(lastCacheUsage.cacheWriteTokens)} written`
+          : ""
       : "";
 
   const ariaLabel = hasLimit

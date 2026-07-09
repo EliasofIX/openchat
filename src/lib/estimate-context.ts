@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // estimate-context — approximate token usage for the chat context window meter.
-// Mirrors the API message shape (system prompt + hydrated messages + draft).
-// Uses a chars/4 heuristic; images get a fixed conservative allowance.
+// Mirrors the upstream wire shape: stable system + optional memoryContext user
+// message + conversation messages + draft. Assistant reasoning is UI-only and
+// is not counted. Uses a chars/4 heuristic; images get a fixed allowance.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildApiContent, type ContentPart } from "@/lib/build-api-content";
@@ -57,11 +58,17 @@ function messageToApiContent(m: Message): string | ContentPart[] {
 
 function countMessage(m: Message): { text: number; images: number } {
   const content = countContentParts(messageToApiContent(m));
-  const reasoning = m.reasoning ? textTokens(m.reasoning) : 0;
+  // Reasoning is UI-only — never sent upstream (see toApiMessage / toUpstreamMessage).
   return {
-    text: content.text + reasoning + MESSAGE_OVERHEAD_TOKENS,
+    text: content.text + MESSAGE_OVERHEAD_TOKENS,
     images: content.images,
   };
+}
+
+function countPromptText(text: string | undefined): number {
+  const trimmed = text?.trim();
+  if (!trimmed) return 0;
+  return textTokens(trimmed) + MESSAGE_OVERHEAD_TOKENS;
 }
 
 function countDraft(
@@ -85,6 +92,8 @@ function countDraft(
 
 export type ContextTokenBreakdown = {
   system: number;
+  /** Injected memory user message (not part of the system role). */
+  memory: number;
   messages: number;
   draft: number;
   images: number;
@@ -93,13 +102,13 @@ export type ContextTokenBreakdown = {
 
 export function estimateContextBreakdown(input: {
   systemPrompt?: string;
+  memoryContext?: string;
   messages: Message[];
   draftText?: string;
   draftAttachments?: MessageAttachment[];
 }): ContextTokenBreakdown {
-  const system = input.systemPrompt?.trim()
-    ? textTokens(input.systemPrompt) + MESSAGE_OVERHEAD_TOKENS
-    : 0;
+  const system = countPromptText(input.systemPrompt);
+  const memory = countPromptText(input.memoryContext);
 
   let messagesText = 0;
   let images = 0;
@@ -114,12 +123,14 @@ export function estimateContextBreakdown(input: {
 
   const total =
     system +
+    memory +
     messagesText +
     draft.text +
     images * IMAGE_TOKEN_ALLOWANCE;
 
   return {
     system,
+    memory,
     messages: messagesText,
     draft: draft.text,
     images: images * IMAGE_TOKEN_ALLOWANCE,
@@ -129,6 +140,7 @@ export function estimateContextBreakdown(input: {
 
 export function estimateContextTokens(input: {
   systemPrompt?: string;
+  memoryContext?: string;
   messages: Message[];
   draftText?: string;
   draftAttachments?: MessageAttachment[];
