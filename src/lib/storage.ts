@@ -8,6 +8,7 @@ import {
   putBlobsFromMessages,
 } from "@/lib/attachment-store";
 import type { Conversation, Memory, Message, MessageAttachment, UserSettings } from "./types";
+import { isGrokTtsVoice } from "./tts";
 
 const KEY_LEGACY_CONVERSATIONS = "openchat:conversations";
 const KEY_CONV_INDEX = "openchat:conv-index";
@@ -91,6 +92,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
     enabled: true,
     ttl: "5m",
   },
+  tts: {
+    voice: "eve",
+  },
 };
 
 const LEGACY_DEFAULT_TITLE_MODEL = "google/gemini-2.0-flash-001";
@@ -145,6 +149,14 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
     promptCaching: {
       ...DEFAULT_SETTINGS.promptCaching,
       ...stored.promptCaching,
+    },
+    tts: {
+      ...DEFAULT_SETTINGS.tts,
+      ...stored.tts,
+      voice:
+        stored.tts?.voice && isGrokTtsVoice(stored.tts.voice)
+          ? stored.tts.voice
+          : DEFAULT_SETTINGS.tts.voice,
     },
   };
 }

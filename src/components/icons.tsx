@@ -246,6 +246,16 @@ export function Sparkles({ size, className }: IconProps) {
   );
 }
 
+export function Volume2({ size, className }: IconProps) {
+  return (
+    <Icon size={size} className={className}>
+      <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" />
+      <path d="M16 9a5 5 0 0 1 0 6" />
+      <path d="M19.364 5.636a9 9 0 0 1 0 12.728" />
+    </Icon>
+  );
+}
+
 export function Square({ size, className }: IconProps) {
   return (
     <Icon size={size} className={className}>

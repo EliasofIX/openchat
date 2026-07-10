@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Brain, Palette, User, X } from "@/components/icons";
+import { Brain, Palette, User, Volume2, X } from "@/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogPanel } from "@/components/ui/dialog";
@@ -9,7 +9,18 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { applyColorAccent } from "@/lib/color-accent";
 import { REASONING_EFFORT_LABELS, REASONING_EFFORTS } from "@/lib/openrouter";
-import type { Memory, ReasoningEffort, TitleGenerationSettings, UserSettings } from "@/lib/types";
+import {
+  GROK_TTS_VOICE_HINTS,
+  GROK_TTS_VOICE_LABELS,
+  GROK_TTS_VOICES,
+} from "@/lib/tts";
+import type {
+  GrokTtsVoice,
+  Memory,
+  ReasoningEffort,
+  TitleGenerationSettings,
+  UserSettings,
+} from "@/lib/types";
 import type { SaveMemoryResult } from "@/lib/memory-tools";
 import { cn } from "@/lib/utils";
 import { ColorAccentPicker } from "./color-accent-picker";
@@ -76,6 +87,7 @@ export function SettingsDialog({
   );
   const [memorySettings, setMemorySettings] = useState(settings.memory);
   const [promptCaching, setPromptCaching] = useState(settings.promptCaching);
+  const [ttsVoice, setTtsVoice] = useState(settings.tts.voice);
   const [colorAccent, setColorAccent] = useState<string | null>(settings.colorAccent);
   const previewAccentRef = useRef<string | null>(settings.colorAccent);
   const memorySectionRef = useRef<HTMLDivElement>(null);
@@ -106,6 +118,7 @@ export function SettingsDialog({
       setTitleGeneration(settings.titleGeneration);
       setMemorySettings(settings.memory);
       setPromptCaching(settings.promptCaching);
+      setTtsVoice(settings.tts.voice);
       setColorAccent(settings.colorAccent);
       previewAccentRef.current = settings.colorAccent;
     }
@@ -140,6 +153,7 @@ export function SettingsDialog({
       titleGeneration,
       memory: memorySettings,
       promptCaching,
+      tts: { voice: ttsVoice },
     });
     previewAccentRef.current = colorAccent;
     onOpenChange(false);
@@ -276,6 +290,30 @@ export function SettingsDialog({
 
               <Separator />
 
+              <SettingsSection
+                icon={Volume2}
+                title="Read aloud"
+                description="Text-to-speech for assistant replies via Grok Voice on OpenRouter."
+              >
+                <SettingsField
+                  label="Voice"
+                  hint="Uses x-ai/grok-voice-tts-1.0. Requires an OpenRouter API key."
+                >
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {GROK_TTS_VOICES.map((voice) => (
+                      <VoiceButton
+                        key={voice}
+                        voice={voice}
+                        selected={ttsVoice === voice}
+                        onSelect={() => setTtsVoice(voice)}
+                      />
+                    ))}
+                  </div>
+                </SettingsField>
+              </SettingsSection>
+
+              <Separator />
+
               <TitleSettings
                 titleGeneration={titleGeneration}
                 onTitleGenerationChange={(patch) =>
@@ -316,6 +354,34 @@ export function SettingsDialog({
         </div>
       </DialogPanel>
     </Dialog>
+  );
+}
+
+function VoiceButton({
+  voice,
+  selected,
+  onSelect,
+}: {
+  voice: GrokTtsVoice;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "rounded-md border px-2 py-2 text-left transition",
+        selected
+          ? "border-foreground bg-muted text-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-foreground/15 hover:bg-muted hover:text-foreground",
+      )}
+    >
+      <span className="block text-[11px] font-medium">{GROK_TTS_VOICE_LABELS[voice]}</span>
+      <span className="mt-0.5 block text-[10px] leading-snug opacity-80">
+        {GROK_TTS_VOICE_HINTS[voice]}
+      </span>
+    </button>
   );
 }
 

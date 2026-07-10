@@ -96,6 +96,12 @@ export type PromptCachingSettings = {
   ttl: "5m" | "1h";
 };
 
+export type GrokTtsVoice = "eve" | "ara" | "rex" | "sal" | "leo";
+
+export type TtsSettings = {
+  voice: GrokTtsVoice;
+};
+
 export type UserSettings = {
   name: string;
   customInstructions: string;
@@ -110,4 +116,5 @@ export type UserSettings = {
   titleGeneration: TitleGenerationSettings;
   memory: MemorySettings;
   promptCaching: PromptCachingSettings;
+  tts: TtsSettings;
 };

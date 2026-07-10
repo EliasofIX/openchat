@@ -339,6 +339,8 @@ export function Chat() {
                             ? openMemorySettings
                             : undefined
                         }
+                        ttsVoice={settingsHook.settings.tts.voice}
+                        openRouterApiKey={settingsHook.settings.openRouterApiKey}
                       />
                     </div>
                   );
