@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, Pause, Play, X } from "@/components/icons";
 import {
   changeTtsVoice,
+  clearTtsError,
   cycleTtsRate,
   stopTts,
   togglePauseTts,
@@ -23,7 +24,7 @@ type Props = {
 };
 
 function formatRate(rate: number) {
-  return Number.isInteger(rate) ? `${rate}x` : `${rate}x`;
+  return `${rate}x`;
 }
 
 export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
@@ -46,6 +47,30 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
       document.removeEventListener("keydown", onKey);
     };
   }, [voiceOpen]);
+
+  if (playback.status === "idle" && playback.error) {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 bottom-full z-30 mb-2 flex justify-center px-4">
+        <div
+          role="alert"
+          className={cn(
+            "pointer-events-auto flex max-w-md items-start gap-2 rounded-2xl",
+            "border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive shadow-lg",
+          )}
+        >
+          <p className="min-w-0 flex-1 leading-snug">{playback.error}</p>
+          <button
+            type="button"
+            onClick={clearTtsError}
+            className="grid size-6 shrink-0 place-items-center rounded-full transition hover:bg-destructive/10"
+            aria-label="Dismiss error"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (playback.status === "idle") return null;
 

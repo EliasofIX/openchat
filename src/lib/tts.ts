@@ -29,6 +29,33 @@ export function isGrokTtsVoice(value: string): value is GrokTtsVoice {
   return (GROK_TTS_VOICES as string[]).includes(value);
 }
 
+export type TtsValidationResult =
+  | { ok: true; text: string; voice: GrokTtsVoice }
+  | { ok: false; status: number; message: string };
+
+/** Shared request checks for `/api/tts` (and unit tests). */
+export function validateTtsRequest(body: {
+  text?: string;
+  voice?: string;
+}): TtsValidationResult {
+  const text = body.text?.trim();
+  if (!text) {
+    return { ok: false, status: 400, message: "`text` must be a non-empty string." };
+  }
+  if (text.length > GROK_TTS_MAX_CHARS) {
+    return {
+      ok: false,
+      status: 400,
+      message: `Text exceeds the ${GROK_TTS_MAX_CHARS.toLocaleString()} character limit.`,
+    };
+  }
+  const voice = body.voice ?? "eve";
+  if (!isGrokTtsVoice(voice)) {
+    return { ok: false, status: 400, message: `Unsupported voice "${voice}".` };
+  }
+  return { ok: true, text, voice };
+}
+
 /** Strip common markdown so TTS reads natural speech, not punctuation artifacts. */
 export function markdownToSpeechText(markdown: string): string {
   let text = markdown.trim();

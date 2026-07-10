@@ -2,7 +2,7 @@
 // Shared Grok Voice TTS player — one active message at a time.
 // useSyncExternalStore so every message + the now-playing bar stay in sync.
 // Abort + generation counters so superseded fetches never start the wrong audio.
-// Synthesized audio is LRU-cached (voice + text) so replays skip the network.
+// Audio is LRU-cached in memory + IndexedDB (voice + text) across reloads.
 // ─────────────────────────────────────────────────────────────────────────────
 
 "use client";
@@ -19,6 +19,7 @@ export type TtsSnapshot = {
   status: TtsStatus;
   rate: number;
   voice: GrokTtsVoice | null;
+  error: string | null;
 };
 
 export const TTS_RATES = [0.75, 1, 1.25, 1.5, 2] as const;
@@ -28,6 +29,7 @@ const IDLE: TtsSnapshot = {
   status: "idle",
   rate: 1,
   voice: null,
+  error: null,
 };
 
 let snapshot: TtsSnapshot = IDLE;
@@ -70,8 +72,26 @@ function getServerSnapshot() {
   return IDLE;
 }
 
+function statusForMessage(messageId: string): TtsStatus {
+  return snapshot.messageId === messageId ? snapshot.status : "idle";
+}
+
 export function useTtsPlayback() {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/** Narrow subscription — only re-renders when *this* message's playback status changes. */
+export function useMessageTtsStatus(messageId: string): TtsStatus {
+  return useSyncExternalStore(
+    subscribe,
+    () => statusForMessage(messageId),
+    () => "idle",
+  );
+}
+
+export function clearTtsError() {
+  if (!snapshot.error) return;
+  emit({ ...snapshot, error: null });
 }
 
 export function stopTts() {
@@ -80,7 +100,16 @@ export function stopTts() {
   abortController = null;
   cleanupAudio();
   cached = null;
-  emit({ ...IDLE, rate: snapshot.rate });
+  emit({ ...IDLE, rate: snapshot.rate, error: null });
+}
+
+function failTts(message: string) {
+  generation += 1;
+  abortController?.abort();
+  abortController = null;
+  cleanupAudio();
+  cached = null;
+  emit({ ...IDLE, rate: snapshot.rate, error: message });
 }
 
 async function playBlob(
@@ -99,7 +128,7 @@ async function playBlob(
     if (gen === generation) stopTts();
   };
   next.onerror = () => {
-    if (gen === generation) stopTts();
+    if (gen === generation) failTts("Could not play audio.");
   };
 
   await next.play();
@@ -108,7 +137,7 @@ async function playBlob(
     return;
   }
 
-  emit({ messageId, status: "playing", rate: snapshot.rate, voice });
+  emit({ messageId, status: "playing", rate: snapshot.rate, voice, error: null });
 }
 
 async function synthesizeAndPlay(
@@ -124,21 +153,17 @@ async function synthesizeAndPlay(
   cleanupAudio();
 
   cached = { text, apiKey };
-
-  const hit = getTtsAudio(voice, text);
-  if (hit) {
-    emit({ messageId, status: "loading", rate: snapshot.rate, voice });
-    try {
-      await playBlob(messageId, voice, hit, gen);
-    } catch {
-      if (gen === generation) stopTts();
-    }
-    return;
-  }
-
-  emit({ messageId, status: "loading", rate: snapshot.rate, voice });
+  emit({ messageId, status: "loading", rate: snapshot.rate, voice, error: null });
 
   try {
+    const hit = await getTtsAudio(voice, text);
+    if (gen !== generation) return;
+
+    if (hit) {
+      await playBlob(messageId, voice, hit, gen);
+      return;
+    }
+
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -153,19 +178,25 @@ async function synthesizeAndPlay(
     if (gen !== generation) return;
 
     if (!res.ok) {
-      const detail = await res.text().catch(() => "");
+      const detail = (await res.text().catch(() => "")).trim();
       throw new Error(detail || `TTS failed (${res.status})`);
     }
 
     const blob = await res.blob();
     if (gen !== generation) return;
 
-    putTtsAudio(voice, text, blob);
+    await putTtsAudio(voice, text, blob);
+    if (gen !== generation) return;
+
     await playBlob(messageId, voice, blob, gen);
   } catch (err) {
     if (gen !== generation) return;
     if (err instanceof DOMException && err.name === "AbortError") return;
-    stopTts();
+    const message =
+      err instanceof Error && err.message
+        ? err.message
+        : "Read aloud failed. Check your OpenRouter API key.";
+    failTts(message);
   }
 }
 
@@ -190,11 +221,16 @@ export function pauseTts() {
 
 export function resumeTts() {
   if (!audio || snapshot.status !== "paused") return;
-  void audio.play().then(() => {
-    if (snapshot.status === "paused" && audio) {
-      emit({ ...snapshot, status: "playing" });
-    }
-  });
+  void audio.play().then(
+    () => {
+      if (snapshot.status === "paused" && audio) {
+        emit({ ...snapshot, status: "playing", error: null });
+      }
+    },
+    () => {
+      if (snapshot.messageId) failTts("Could not resume audio.");
+    },
+  );
 }
 
 export function togglePauseTts() {
@@ -228,19 +264,18 @@ export async function changeTtsVoice(voice: GrokTtsVoice) {
 }
 
 export function useMessageTts(messageId: string) {
-  const playback = useTtsPlayback();
-  const isActive = playback.messageId === messageId;
-  const status: TtsStatus = isActive ? playback.status : "idle";
+  const status = useMessageTtsStatus(messageId);
+  const isActive = status !== "idle";
 
   const toggle = useCallback(
     async (markdown: string, voice: GrokTtsVoice, apiKey: string) => {
-      if (isActive && status !== "idle") {
+      if (isActive) {
         stopTts();
         return;
       }
       await playMessageTts(messageId, markdown, voice, apiKey);
     },
-    [isActive, messageId, status],
+    [isActive, messageId],
   );
 
   return { status, isActive, toggle };

@@ -186,9 +186,11 @@ function AssistantMessage({
             <span>
               {ttsStatus === "loading"
                 ? "Loading"
-                : ttsStatus === "playing" || ttsStatus === "paused"
+                : ttsStatus === "playing"
                   ? "Playing"
-                  : "Read aloud"}
+                  : ttsStatus === "paused"
+                    ? "Paused"
+                    : "Read aloud"}
             </span>
           </button>
           <button
