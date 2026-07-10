@@ -2,11 +2,13 @@
 // Shared Grok Voice TTS player — one active message at a time.
 // useSyncExternalStore so every message + the now-playing bar stay in sync.
 // Abort + generation counters so superseded fetches never start the wrong audio.
+// Synthesized audio is LRU-cached (voice + text) so replays skip the network.
 // ─────────────────────────────────────────────────────────────────────────────
 
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { getTtsAudio, putTtsAudio } from "@/lib/tts-cache";
 import { markdownToSpeechText } from "@/lib/tts";
 import type { GrokTtsVoice } from "@/lib/types";
 
@@ -81,6 +83,34 @@ export function stopTts() {
   emit({ ...IDLE, rate: snapshot.rate });
 }
 
+async function playBlob(
+  messageId: string,
+  voice: GrokTtsVoice,
+  blob: Blob,
+  gen: number,
+) {
+  const url = URL.createObjectURL(blob);
+  const next = new Audio(url);
+  next.playbackRate = snapshot.rate;
+  blobUrl = url;
+  audio = next;
+
+  next.onended = () => {
+    if (gen === generation) stopTts();
+  };
+  next.onerror = () => {
+    if (gen === generation) stopTts();
+  };
+
+  await next.play();
+  if (gen !== generation) {
+    next.pause();
+    return;
+  }
+
+  emit({ messageId, status: "playing", rate: snapshot.rate, voice });
+}
+
 async function synthesizeAndPlay(
   messageId: string,
   text: string,
@@ -94,6 +124,18 @@ async function synthesizeAndPlay(
   cleanupAudio();
 
   cached = { text, apiKey };
+
+  const hit = getTtsAudio(voice, text);
+  if (hit) {
+    emit({ messageId, status: "loading", rate: snapshot.rate, voice });
+    try {
+      await playBlob(messageId, voice, hit, gen);
+    } catch {
+      if (gen === generation) stopTts();
+    }
+    return;
+  }
+
   emit({ messageId, status: "loading", rate: snapshot.rate, voice });
 
   try {
@@ -118,26 +160,8 @@ async function synthesizeAndPlay(
     const blob = await res.blob();
     if (gen !== generation) return;
 
-    const url = URL.createObjectURL(blob);
-    const next = new Audio(url);
-    next.playbackRate = snapshot.rate;
-    blobUrl = url;
-    audio = next;
-
-    next.onended = () => {
-      if (gen === generation) stopTts();
-    };
-    next.onerror = () => {
-      if (gen === generation) stopTts();
-    };
-
-    await next.play();
-    if (gen !== generation) {
-      next.pause();
-      return;
-    }
-
-    emit({ messageId, status: "playing", rate: snapshot.rate, voice });
+    putTtsAudio(voice, text, blob);
+    await playBlob(messageId, voice, blob, gen);
   } catch (err) {
     if (gen !== generation) return;
     if (err instanceof DOMException && err.name === "AbortError") return;
