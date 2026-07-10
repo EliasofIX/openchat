@@ -271,6 +271,7 @@ Example (too much):
 | Assistant message rendering | `src/components/markdown.tsx`, `src/components/chat/message.tsx` |
 | Attachments | `src/lib/attachments.ts`, `src/hooks/use-attachments.ts` |
 | Reasoning display | `src/lib/reasoning.ts`, `src/components/chat/reasoning-panel.tsx` |
+| Read aloud (Grok TTS) | `src/hooks/use-message-tts.ts`, `src/components/chat/tts-now-playing.tsx`, `src/app/api/tts/route.ts` — shared player with abort + generation guards; voice in `UserSettings.tts` |
 | Context window / usage meter | `src/lib/model-capabilities.ts`, `src/lib/estimate-context.ts`, `src/components/chat/context-usage.tsx` — count stable system + `memoryContext` separately; do not count UI-only assistant `reasoning` |
 | Prompt caching (OpenRouter) | `src/lib/prompt-cache.ts`, `src/lib/system-prompt.ts`, `src/app/api/chat/route.ts`, settings → `promptCaching` |
 | Electron desktop build | `electron/main.mjs`, `electron/prepare-standalone.mjs`, `package.json` `build` field — list `standalone/node_modules` as its own `extraResources` entry or electron-builder skips it |

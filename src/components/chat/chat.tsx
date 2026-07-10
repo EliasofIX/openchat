@@ -5,8 +5,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { PanelLeft, PanelLeftClose, SquarePen } from "@/components/icons";
 import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
+import { TtsNowPlaying } from "./tts-now-playing";
 import type { SettingsTab, SettingsScrollTarget } from "./settings-dialog";
 import { useChat } from "@/hooks/use-chat";
+import { stopTts } from "@/hooks/use-message-tts";
 import { buildCacheSessionId, type PromptCacheUsage } from "@/lib/prompt-cache";
 import { useAttachments } from "@/hooks/use-attachments";
 import { useLowPower } from "@/hooks/use-low-power";
@@ -94,6 +96,10 @@ export function Chat() {
   useEffect(() => {
     setLastCacheUsage(null);
   }, [conv.activeId, activeModel]);
+
+  useEffect(() => {
+    stopTts();
+  }, [conv.activeId]);
 
   const chat = useChat({
     systemPrompt: stableSystemPrompt,
@@ -355,23 +361,29 @@ export function Chat() {
           )}
         </main>
 
-        <ChatComposer
-          messages={chat.messages}
-          isStreaming={chat.isStreaming}
-          systemPrompt={stableSystemPrompt}
-          memoryContext={memoryContext}
-          contextTokens={modelCapabilities.capabilities.contextTokens}
-          promptCachingMode={modelCapabilities.capabilities.promptCaching}
-          lastCacheUsage={lastCacheUsage}
-          modelCapabilitiesLoading={modelCapabilities.loading}
-          modelCapabilitiesError={modelCapabilities.error}
-          memoryToolsUnavailable={memoryToolsUnavailable}
-          settings={settingsHook.settings}
-          attachmentsHook={attachmentsHook}
-          onSend={onSend}
-          onStop={chat.stop}
-          resetSignal={composerReset}
-        />
+        <div className="relative shrink-0">
+          <TtsNowPlaying
+            voice={settingsHook.settings.tts.voice}
+            onVoiceChange={(voice) => settingsHook.update({ tts: { voice } })}
+          />
+          <ChatComposer
+            messages={chat.messages}
+            isStreaming={chat.isStreaming}
+            systemPrompt={stableSystemPrompt}
+            memoryContext={memoryContext}
+            contextTokens={modelCapabilities.capabilities.contextTokens}
+            promptCachingMode={modelCapabilities.capabilities.promptCaching}
+            lastCacheUsage={lastCacheUsage}
+            modelCapabilitiesLoading={modelCapabilities.loading}
+            modelCapabilitiesError={modelCapabilities.error}
+            memoryToolsUnavailable={memoryToolsUnavailable}
+            settings={settingsHook.settings}
+            attachmentsHook={attachmentsHook}
+            onSend={onSend}
+            onStop={chat.stop}
+            resetSignal={composerReset}
+          />
+        </div>
       </div>
     </div>
   );

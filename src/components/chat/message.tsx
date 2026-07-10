@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState } from "react";
-import { Check, Copy, FileCode2, FileText, Loader2, Square, Volume2 } from "@/components/icons";
+import { Check, Copy, FileCode2, FileText, Loader2, Volume2 } from "@/components/icons";
 import { Markdown } from "@/components/markdown-lazy";
 import { useAttachmentBlob } from "@/hooks/use-attachment-blob";
 import { useMessageTts } from "@/hooks/use-message-tts";
@@ -111,7 +111,7 @@ function AssistantMessage({
   openRouterApiKey: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const { state: ttsState, toggle: toggleTts } = useMessageTts(message.id);
+  const { status: ttsStatus, toggle: toggleTts } = useMessageTts(message.id);
   const hasReasoning = Boolean(message.reasoning?.trim());
   const hasContent = Boolean(message.content);
   const isThinking = isStreaming && hasReasoning && !hasContent;
@@ -156,30 +156,38 @@ function AssistantMessage({
       )}
 
       {hasContent && !isStreaming && (
-        <div className={cn("mt-1.5 -ml-1 flex h-6 items-center gap-1", touchVisible)}>
+        <div
+          className={cn(
+            "mt-1.5 -ml-1 flex h-6 items-center gap-1",
+            ttsStatus === "idle" ? touchVisible : "opacity-100",
+          )}
+        >
           <button
             type="button"
             onClick={() => void toggleTts(message.content, ttsVoice, openRouterApiKey)}
-            disabled={ttsState === "loading"}
+            disabled={ttsStatus === "loading"}
             className={cn(
               "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground",
               "transition hover:bg-muted hover:text-foreground",
-              ttsState === "loading" && "opacity-60",
+              ttsStatus === "loading" && "opacity-60",
+              (ttsStatus === "playing" || ttsStatus === "paused") && "text-foreground",
             )}
-            aria-label={ttsState === "playing" ? "Stop read aloud" : "Read aloud"}
+            aria-label={
+              ttsStatus === "idle" || ttsStatus === "loading"
+                ? "Read aloud"
+                : "Stop read aloud"
+            }
           >
-            {ttsState === "loading" ? (
+            {ttsStatus === "loading" ? (
               <Loader2 size={12} className="animate-spin" />
-            ) : ttsState === "playing" ? (
-              <Square size={12} />
             ) : (
               <Volume2 size={12} />
             )}
             <span>
-              {ttsState === "loading"
+              {ttsStatus === "loading"
                 ? "Loading"
-                : ttsState === "playing"
-                  ? "Stop"
+                : ttsStatus === "playing" || ttsStatus === "paused"
+                  ? "Playing"
                   : "Read aloud"}
             </span>
           </button>
