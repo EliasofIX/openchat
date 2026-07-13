@@ -13,6 +13,7 @@ type TitleRequest = {
   ollamaBaseUrl?: string;
   fallbackProvider?: ModelProvider;
   fallbackModel?: string;
+  zdrOnly?: boolean;
 };
 
 type TitleAttempt = {
@@ -41,6 +42,7 @@ async function requestTitle(
   model: string | undefined,
   apiKey: string | undefined,
   ollamaBaseUrl: string | undefined,
+  zdrOnly: boolean | undefined,
 ): Promise<string> {
   return completeChat({
     provider,
@@ -48,6 +50,7 @@ async function requestTitle(
     apiKey,
     ollamaBaseUrl,
     useTitleDefault: true,
+    zdrOnly,
     messages: [
       { role: "system", content: TITLE_SYSTEM_PROMPT },
       {
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
     return new Response("Invalid JSON body.", { status: 400 });
   }
 
-  const { messages, apiKey, ollamaBaseUrl } = body;
+  const { messages, apiKey, ollamaBaseUrl, zdrOnly } = body;
 
   if (!messages?.trim()) {
     return new Response("`messages` must be a non-empty string.", { status: 400 });
@@ -106,6 +109,7 @@ export async function POST(req: Request) {
         attempt.model,
         apiKey,
         ollamaBaseUrl,
+        zdrOnly,
       );
       const title = sanitizeTitle(raw);
       if (isValidTitle(title)) {

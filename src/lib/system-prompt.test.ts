@@ -34,9 +34,11 @@ function settings(patch: Partial<UserSettings> = {}): UserSettings {
       showInResponse: true,
       collapseByDefault: false,
     },
-    titleGeneration: { enabled: true, model: "" },
+    titleGeneration: { enabled: true, provider: "openrouter", model: "" },
     memory: { enabled: true },
     promptCaching: { enabled: true, ttl: "5m" },
+    zdrOnly: false,
+    tts: { voice: "eve" },
     ...patch,
     memory: patch.memory ?? { enabled: true },
   };

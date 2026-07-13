@@ -1,5 +1,6 @@
 // In-memory + IndexedDB LRU cache for Grok TTS audio blobs.
-// Keyed by voice + speech text so replays skip the network across reloads.
+// Keyed by voice + ZDR mode + speech text so replays skip the network across
+// reloads without mixing ZDR and non-ZDR synthesized audio.
 // Evicts by entry count and total byte budget.
 
 import type { GrokTtsVoice } from "./types";
@@ -20,6 +21,7 @@ type CacheEntry = {
 type StoredEntry = {
   voice: GrokTtsVoice;
   text: string;
+  zdrOnly: boolean;
   blob: Blob;
   size: number;
   updatedAt: number;
@@ -30,8 +32,8 @@ let memoryBytes = 0;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
-function cacheKey(voice: GrokTtsVoice, text: string) {
-  return `${voice}\0${text}`;
+function cacheKey(voice: GrokTtsVoice, text: string, zdrOnly: boolean) {
+  return `${voice}\0${zdrOnly ? "1" : "0"}\0${text}`;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -164,8 +166,12 @@ export function __ttsCacheMemoryStats() {
   return { entries: memory.size, bytes: memoryBytes };
 }
 
-export async function getTtsAudio(voice: GrokTtsVoice, text: string): Promise<Blob | null> {
-  const key = cacheKey(voice, text);
+export async function getTtsAudio(
+  voice: GrokTtsVoice,
+  text: string,
+  zdrOnly = false,
+): Promise<Blob | null> {
+  const key = cacheKey(voice, text, zdrOnly);
   const hit = memory.get(key);
   if (hit) {
     touchMemory(key, hit);
@@ -185,12 +191,18 @@ export async function getTtsAudio(voice: GrokTtsVoice, text: string): Promise<Bl
   return stored.blob;
 }
 
-export async function putTtsAudio(voice: GrokTtsVoice, text: string, blob: Blob): Promise<void> {
-  const key = cacheKey(voice, text);
+export async function putTtsAudio(
+  voice: GrokTtsVoice,
+  text: string,
+  blob: Blob,
+  zdrOnly = false,
+): Promise<void> {
+  const key = cacheKey(voice, text, zdrOnly);
   putMemory(key, blob);
   await writeIdb(key, {
     voice,
     text,
+    zdrOnly,
     blob,
     size: blob.size,
     updatedAt: Date.now(),

@@ -87,6 +87,7 @@ export function SettingsDialog({
   );
   const [memorySettings, setMemorySettings] = useState(settings.memory);
   const [promptCaching, setPromptCaching] = useState(settings.promptCaching);
+  const [zdrOnly, setZdrOnly] = useState(settings.zdrOnly);
   const [ttsVoice, setTtsVoice] = useState(settings.tts.voice);
   const [colorAccent, setColorAccent] = useState<string | null>(settings.colorAccent);
   const previewAccentRef = useRef<string | null>(settings.colorAccent);
@@ -118,6 +119,7 @@ export function SettingsDialog({
       setTitleGeneration(settings.titleGeneration);
       setMemorySettings(settings.memory);
       setPromptCaching(settings.promptCaching);
+      setZdrOnly(settings.zdrOnly);
       setTtsVoice(settings.tts.voice);
       setColorAccent(settings.colorAccent);
       previewAccentRef.current = settings.colorAccent;
@@ -153,6 +155,7 @@ export function SettingsDialog({
       titleGeneration,
       memory: memorySettings,
       promptCaching,
+      zdrOnly,
       tts: { voice: ttsVoice },
     });
     previewAccentRef.current = colorAccent;
@@ -311,6 +314,25 @@ export function SettingsDialog({
                   </div>
                 </SettingsField>
               </SettingsSection>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <ProvidersSettings
+                provider={provider}
+                onProviderChange={setProvider}
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+                model={model}
+                onModelChange={setModel}
+                ollamaBaseUrl={ollamaBaseUrl}
+                onOllamaBaseUrlChange={setOllamaBaseUrl}
+                ollamaModel={ollamaModel}
+                onOllamaModelChange={setOllamaModel}
+                promptCaching={promptCaching}
+                onPromptCachingChange={setPromptCaching}
+                zdrOnly={zdrOnly}
+                onZdrOnlyChange={setZdrOnly}
+              />
 
               <Separator />
 
@@ -322,21 +344,6 @@ export function SettingsDialog({
                 ollamaBaseUrl={ollamaBaseUrl}
               />
             </div>
-          ) : (
-            <ProvidersSettings
-              provider={provider}
-              onProviderChange={setProvider}
-              apiKey={apiKey}
-              onApiKeyChange={setApiKey}
-              model={model}
-              onModelChange={setModel}
-              ollamaBaseUrl={ollamaBaseUrl}
-              onOllamaBaseUrlChange={setOllamaBaseUrl}
-              ollamaModel={ollamaModel}
-              onOllamaModelChange={setOllamaModel}
-              promptCaching={promptCaching}
-              onPromptCachingChange={setPromptCaching}
-            />
           )}
         </div>
 

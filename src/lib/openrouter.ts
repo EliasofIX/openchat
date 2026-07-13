@@ -66,3 +66,8 @@ export function hermesReasoningSystemDirective(model?: string): string | undefin
 export function shouldStreamReasoning(settings?: ReasoningSettings): boolean {
   return Boolean(settings?.enabled);
 }
+
+/** Spread into OpenRouter chat/completion/TTS bodies when ZDR-only is enabled. */
+export function openRouterZdrProvider(zdrOnly: boolean | undefined) {
+  return zdrOnly ? { provider: { zdr: true as const } } : {};
+}

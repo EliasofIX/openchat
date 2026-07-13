@@ -92,6 +92,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
     enabled: true,
     ttl: "5m",
   },
+  zdrOnly: false,
   tts: {
     voice: "eve",
   },
@@ -150,6 +151,7 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
       ...DEFAULT_SETTINGS.promptCaching,
       ...stored.promptCaching,
     },
+    zdrOnly: stored.zdrOnly ?? DEFAULT_SETTINGS.zdrOnly,
     tts: {
       ...DEFAULT_SETTINGS.tts,
       ...stored.tts,

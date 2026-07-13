@@ -28,6 +28,16 @@ describe("tts-cache", () => {
     assert.equal(await getTtsAudio("ara", "same text"), ara);
   });
 
+  it("keys by ZDR mode so enabling ZDR-only does not reuse non-ZDR audio", async () => {
+    __resetTtsCacheForTests();
+    const open = new Blob(["open"], { type: "audio/mpeg" });
+    const zdr = new Blob(["zdr"], { type: "audio/mpeg" });
+    await putTtsAudio("eve", "same text", open, false);
+    await putTtsAudio("eve", "same text", zdr, true);
+    assert.equal(await getTtsAudio("eve", "same text", false), open);
+    assert.equal(await getTtsAudio("eve", "same text", true), zdr);
+  });
+
   it("evicts oldest entries when over the entry cap", async () => {
     __resetTtsCacheForTests();
     for (let i = 0; i < TTS_CACHE_MAX_ENTRIES + 3; i++) {

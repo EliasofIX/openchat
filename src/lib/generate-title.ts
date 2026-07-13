@@ -93,6 +93,7 @@ export async function generateChatTitle(
     ollamaBaseUrl: getOllamaBaseUrl(settings),
     fallbackProvider: settings.provider,
     fallbackModel: chatModel,
+    zdrOnly: settings.zdrOnly || undefined,
   };
 
   const res = await fetch("/api/generate-title", {

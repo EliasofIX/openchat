@@ -85,6 +85,8 @@ export type ChatCompletionRequest = {
   cache_control?: { type: "ephemeral"; ttl?: "1h" };
   session_id?: string;
   stream_options?: { include_usage: boolean };
+  /** OpenRouter provider routing prefs (e.g. ZDR-only). */
+  provider?: { zdr?: boolean };
 };
 
 export type AiClientOptions = {

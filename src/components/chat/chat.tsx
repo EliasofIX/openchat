@@ -112,6 +112,7 @@ export function Chat() {
     memoryEnabled,
     promptCaching: settingsHook.settings.promptCaching,
     promptCachingMode: modelCapabilities.capabilities.promptCaching,
+    zdrOnly: settingsHook.settings.zdrOnly,
     sessionId: cacheSessionId,
     onCacheUsage: setLastCacheUsage,
     onSaveMemory: (content) => memoriesHook.tryAdd(content, "agent"),
@@ -347,6 +348,7 @@ export function Chat() {
                         }
                         ttsVoice={settingsHook.settings.tts.voice}
                         openRouterApiKey={settingsHook.settings.openRouterApiKey}
+                        zdrOnly={settingsHook.settings.zdrOnly}
                       />
                     </div>
                   );

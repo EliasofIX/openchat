@@ -57,6 +57,7 @@ export type UseChatOptions = {
   memoryEnabled?: boolean;
   promptCaching?: PromptCachingSettings;
   promptCachingMode?: import("@/lib/prompt-cache").PromptCachingMode;
+  zdrOnly?: boolean;
   sessionId?: string | null;
   onSaveMemory?: (content: string) => SaveMemoryResult;
   onFinish?: (assistantMessage: Message, allMessages: Message[]) => void;
@@ -156,6 +157,7 @@ export function useChat(options: UseChatOptions = {}) {
     memoryEnabled,
     promptCaching,
     promptCachingMode,
+    zdrOnly,
     sessionId,
     onSaveMemory,
     onFinish,
@@ -178,6 +180,7 @@ export function useChat(options: UseChatOptions = {}) {
   const memoryEnabledRef = useRef(memoryEnabled);
   const promptCachingRef = useRef(promptCaching);
   const promptCachingModeRef = useRef(promptCachingMode);
+  const zdrOnlyRef = useRef(zdrOnly);
   const sessionIdRef = useRef(sessionId);
   const onSaveMemoryRef = useRef(onSaveMemory);
   const onFinishRef = useRef(onFinish);
@@ -197,6 +200,7 @@ export function useChat(options: UseChatOptions = {}) {
   useEffect(() => { memoryEnabledRef.current = memoryEnabled; }, [memoryEnabled]);
   useEffect(() => { promptCachingRef.current = promptCaching; }, [promptCaching]);
   useEffect(() => { promptCachingModeRef.current = promptCachingMode; }, [promptCachingMode]);
+  useEffect(() => { zdrOnlyRef.current = zdrOnly; }, [zdrOnly]);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { onSaveMemoryRef.current = onSaveMemory; }, [onSaveMemory]);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
@@ -394,6 +398,10 @@ export function useChat(options: UseChatOptions = {}) {
 
         if (promptCachingModeRef.current) {
           payload.promptCachingMode = promptCachingModeRef.current;
+        }
+
+        if (zdrOnlyRef.current) {
+          payload.zdrOnly = true;
         }
 
         const resolvedSessionId = sessionIdRef.current?.trim();

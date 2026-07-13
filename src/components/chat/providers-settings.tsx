@@ -22,6 +22,8 @@ type Props = {
   onOllamaModelChange: (value: string) => void;
   promptCaching: PromptCachingSettings;
   onPromptCachingChange: (value: PromptCachingSettings) => void;
+  zdrOnly: boolean;
+  onZdrOnlyChange: (value: boolean) => void;
 };
 
 export function ProvidersSettings({
@@ -37,6 +39,8 @@ export function ProvidersSettings({
   onOllamaModelChange,
   promptCaching,
   onPromptCachingChange,
+  zdrOnly,
+  onZdrOnlyChange,
 }: Props) {
   const [showApiKey, setShowApiKey] = useState(false);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
@@ -196,6 +200,27 @@ export function ProvidersSettings({
               </select>
             </SettingsField>
           )}
+
+          <SettingsToggleRow
+            label="ZDR-only"
+            description={
+              <span>
+                Only route to Zero Data Retention endpoints. Providers that retain
+                prompts or completions are excluded.{" "}
+                <a
+                  href="https://openrouter.ai/docs/guides/features/zdr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-foreground underline-offset-2 hover:underline"
+                >
+                  Learn more
+                  <ExternalLink size={10} />
+                </a>
+              </span>
+            }
+            checked={zdrOnly}
+            onChange={onZdrOnlyChange}
+          />
         </SettingsSection>
       ) : (
         <SettingsSection

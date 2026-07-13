@@ -1,4 +1,5 @@
 import { createAiClient } from "@/lib/ai-client";
+import { openRouterZdrProvider } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
 import type { ModelProvider } from "@/lib/types";
 
@@ -22,6 +23,7 @@ export type CompletionOptions = {
   ollamaBaseUrl?: string;
   /** When true, use DEFAULT_TITLE_MODEL instead of DEFAULT_MODEL for OpenRouter. */
   useTitleDefault?: boolean;
+  zdrOnly?: boolean;
 };
 
 function createOpenRouterClient(apiKey: string) {
@@ -43,7 +45,7 @@ function createOllamaClient(baseUrl: string) {
 }
 
 export async function completeChat(options: CompletionOptions): Promise<string> {
-  const { provider, messages, apiKey, ollamaBaseUrl, useTitleDefault } = options;
+  const { provider, messages, apiKey, ollamaBaseUrl, useTitleDefault, zdrOnly } = options;
 
   if (provider === "ollama") {
     const baseUrl = normalizeOllamaBaseUrl(
@@ -74,6 +76,7 @@ export async function completeChat(options: CompletionOptions): Promise<string> 
   const response = await client.complete({
     model: options.model?.trim() || fallbackModel,
     messages,
+    ...openRouterZdrProvider(zdrOnly),
   });
   return response.choices[0]?.message?.content?.trim() ?? "";
 }

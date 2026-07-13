@@ -52,7 +52,7 @@ export function SettingsToggleRow({
   onChange,
 }: {
   label: string;
-  description: string;
+  description: React.ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {

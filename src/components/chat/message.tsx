@@ -18,6 +18,7 @@ function messagePropsEqual(
     onOpenMemorySettings?: () => void;
     ttsVoice?: GrokTtsVoice;
     openRouterApiKey?: string;
+    zdrOnly?: boolean;
   },
   next: {
     message: Message;
@@ -26,6 +27,7 @@ function messagePropsEqual(
     onOpenMemorySettings?: () => void;
     ttsVoice?: GrokTtsVoice;
     openRouterApiKey?: string;
+    zdrOnly?: boolean;
   },
 ) {
   return (
@@ -40,7 +42,8 @@ function messagePropsEqual(
     prev.collapseReasoningByDefault === next.collapseReasoningByDefault &&
     prev.onOpenMemorySettings === next.onOpenMemorySettings &&
     prev.ttsVoice === next.ttsVoice &&
-    prev.openRouterApiKey === next.openRouterApiKey
+    prev.openRouterApiKey === next.openRouterApiKey &&
+    prev.zdrOnly === next.zdrOnly
   );
 }
 
@@ -51,6 +54,7 @@ function MessageItemInner({
   onOpenMemorySettings,
   ttsVoice = "eve",
   openRouterApiKey = "",
+  zdrOnly = false,
 }: {
   message: Message;
   isStreaming?: boolean;
@@ -58,6 +62,7 @@ function MessageItemInner({
   onOpenMemorySettings?: () => void;
   ttsVoice?: GrokTtsVoice;
   openRouterApiKey?: string;
+  zdrOnly?: boolean;
 }) {
   if (message.role === "user") {
     const hasAttachments = Boolean(message.attachments?.length);
@@ -89,6 +94,7 @@ function MessageItemInner({
       onOpenMemorySettings={onOpenMemorySettings}
       ttsVoice={ttsVoice}
       openRouterApiKey={openRouterApiKey}
+      zdrOnly={zdrOnly}
     />
   );
 }
@@ -102,6 +108,7 @@ function AssistantMessage({
   onOpenMemorySettings,
   ttsVoice,
   openRouterApiKey,
+  zdrOnly,
 }: {
   message: Message;
   isStreaming: boolean;
@@ -109,6 +116,7 @@ function AssistantMessage({
   onOpenMemorySettings?: () => void;
   ttsVoice: GrokTtsVoice;
   openRouterApiKey: string;
+  zdrOnly: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const { status: ttsStatus, toggle: toggleTts } = useMessageTts(message.id);
@@ -164,7 +172,7 @@ function AssistantMessage({
         >
           <button
             type="button"
-            onClick={() => void toggleTts(message.content, ttsVoice, openRouterApiKey)}
+            onClick={() => void toggleTts(message.content, ttsVoice, openRouterApiKey, zdrOnly)}
             disabled={ttsStatus === "loading"}
             className={cn(
               "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground",

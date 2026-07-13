@@ -22,6 +22,7 @@ import {
 import {
   buildOpenRouterReasoning,
   hermesReasoningSystemDirective,
+  openRouterZdrProvider,
   shouldStreamReasoning,
 } from "@/lib/openrouter";
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from "@/lib/providers";
@@ -72,6 +73,7 @@ type ChatRequest = {
   promptCaching?: PromptCachingSettings;
   sessionId?: string;
   promptCachingMode?: import("@/lib/prompt-cache").PromptCachingMode;
+  zdrOnly?: boolean;
 };
 
 type StreamPart = "content" | "reasoning";
@@ -210,6 +212,7 @@ export async function POST(req: Request) {
     promptCaching,
     sessionId,
     promptCachingMode,
+    zdrOnly,
   } = body;
   const provider = resolveProvider(providerInput);
   const toolsEnabled = Boolean(memoryEnabled);
@@ -318,6 +321,7 @@ export async function POST(req: Request) {
           ...(promptCacheParams?.stream_options
             ? { stream_options: promptCacheParams.stream_options }
             : {}),
+          ...openRouterZdrProvider(zdrOnly),
         },
         streamSignal,
       );

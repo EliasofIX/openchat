@@ -2,7 +2,7 @@
 // Shared Grok Voice TTS player — one active message at a time.
 // useSyncExternalStore so every message + the now-playing bar stay in sync.
 // Abort + generation counters so superseded fetches never start the wrong audio.
-// Audio is LRU-cached in memory + IndexedDB (voice + text) across reloads.
+// Audio is LRU-cached in memory + IndexedDB (voice + ZDR + text) across reloads.
 // ─────────────────────────────────────────────────────────────────────────────
 
 "use client";
@@ -39,7 +39,7 @@ let generation = 0;
 let abortController: AbortController | null = null;
 let audio: HTMLAudioElement | null = null;
 let blobUrl: string | null = null;
-let cached: { text: string; apiKey: string } | null = null;
+let cached: { text: string; apiKey: string; zdrOnly: boolean } | null = null;
 
 function emit(next: TtsSnapshot) {
   snapshot = next;
@@ -145,6 +145,7 @@ async function synthesizeAndPlay(
   text: string,
   voice: GrokTtsVoice,
   apiKey: string,
+  zdrOnly: boolean,
   gen: number,
 ) {
   abortController?.abort();
@@ -152,11 +153,11 @@ async function synthesizeAndPlay(
   abortController = controller;
   cleanupAudio();
 
-  cached = { text, apiKey };
+  cached = { text, apiKey, zdrOnly };
   emit({ messageId, status: "loading", rate: snapshot.rate, voice, error: null });
 
   try {
-    const hit = await getTtsAudio(voice, text);
+    const hit = await getTtsAudio(voice, text, zdrOnly);
     if (gen !== generation) return;
 
     if (hit) {
@@ -172,6 +173,7 @@ async function synthesizeAndPlay(
         text,
         voice,
         apiKey: apiKey.trim() || undefined,
+        ...(zdrOnly ? { zdrOnly: true } : {}),
       }),
     });
 
@@ -185,7 +187,7 @@ async function synthesizeAndPlay(
     const blob = await res.blob();
     if (gen !== generation) return;
 
-    await putTtsAudio(voice, text, blob);
+    await putTtsAudio(voice, text, blob, zdrOnly);
     if (gen !== generation) return;
 
     await playBlob(messageId, voice, blob, gen);
@@ -205,12 +207,13 @@ export async function playMessageTts(
   markdown: string,
   voice: GrokTtsVoice,
   apiKey: string,
+  zdrOnly = false,
 ) {
   const text = markdownToSpeechText(markdown);
   if (!text) return;
 
   const gen = ++generation;
-  await synthesizeAndPlay(messageId, text, voice, apiKey, gen);
+  await synthesizeAndPlay(messageId, text, voice, apiKey, zdrOnly, gen);
 }
 
 export function pauseTts() {
@@ -258,9 +261,9 @@ export async function changeTtsVoice(voice: GrokTtsVoice) {
   if (snapshot.voice === voice && snapshot.status !== "idle") return;
 
   const { messageId } = snapshot;
-  const { text, apiKey } = cached;
+  const { text, apiKey, zdrOnly } = cached;
   const gen = ++generation;
-  await synthesizeAndPlay(messageId, text, voice, apiKey, gen);
+  await synthesizeAndPlay(messageId, text, voice, apiKey, zdrOnly, gen);
 }
 
 export function useMessageTts(messageId: string) {
@@ -268,12 +271,12 @@ export function useMessageTts(messageId: string) {
   const isActive = status !== "idle";
 
   const toggle = useCallback(
-    async (markdown: string, voice: GrokTtsVoice, apiKey: string) => {
+    async (markdown: string, voice: GrokTtsVoice, apiKey: string, zdrOnly = false) => {
       if (isActive) {
         stopTts();
         return;
       }
-      await playMessageTts(messageId, markdown, voice, apiKey);
+      await playMessageTts(messageId, markdown, voice, apiKey, zdrOnly);
     },
     [isActive, messageId],
   );

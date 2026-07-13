@@ -116,5 +116,7 @@ export type UserSettings = {
   titleGeneration: TitleGenerationSettings;
   memory: MemorySettings;
   promptCaching: PromptCachingSettings;
+  /** When true, OpenRouter requests only route to Zero Data Retention endpoints. */
+  zdrOnly: boolean;
   tts: TtsSettings;
 };

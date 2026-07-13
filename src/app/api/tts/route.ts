@@ -1,3 +1,4 @@
+import { openRouterZdrProvider } from "@/lib/openrouter";
 import { GROK_TTS_MODEL, validateTtsRequest } from "@/lib/tts";
 
 export const runtime = "nodejs";
@@ -10,6 +11,7 @@ type TtsRequest = {
   text?: string;
   voice?: string;
   apiKey?: string;
+  zdrOnly?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -50,6 +52,7 @@ export async function POST(req: Request) {
         input: text,
         voice,
         response_format: "mp3",
+        ...openRouterZdrProvider(body.zdrOnly),
       }),
       signal: req.signal,
     });
