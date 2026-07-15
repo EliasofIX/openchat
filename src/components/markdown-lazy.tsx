@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { MessageSource } from "@/lib/types";
 
 const MarkdownDynamic = dynamic(
   () => import("@/components/markdown").then((m) => m.Markdown),
@@ -12,6 +13,14 @@ const MarkdownDynamic = dynamic(
   },
 );
 
-export function Markdown({ content, defer }: { content: string; defer?: boolean }) {
-  return <MarkdownDynamic content={content} defer={defer} />;
+export function Markdown({
+  content,
+  sources,
+  defer,
+}: {
+  content: string;
+  sources?: MessageSource[];
+  defer?: boolean;
+}) {
+  return <MarkdownDynamic content={content} sources={sources} defer={defer} />;
 }

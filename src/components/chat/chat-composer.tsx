@@ -27,6 +27,7 @@ type Props = {
   modelCapabilitiesLoading: boolean;
   modelCapabilitiesError?: string | null;
   memoryToolsUnavailable?: boolean;
+  webSearchToolsUnavailable?: boolean;
   settings: UserSettings;
   attachmentsHook: AttachmentsHook;
   onSend: (text: string, files: MessageAttachment[]) => void;
@@ -59,6 +60,7 @@ export function ChatComposer({
   modelCapabilitiesLoading,
   modelCapabilitiesError,
   memoryToolsUnavailable = false,
+  webSearchToolsUnavailable = false,
   settings,
   attachmentsHook,
   onSend,
@@ -112,8 +114,8 @@ export function ChatComposer({
   };
 
   const activeModel = getActiveModel(settings);
-  const memoryToolsHint =
-    memoryToolsUnavailable && settings.memory.enabled
+  const toolsUnavailableHint =
+    memoryToolsUnavailable || webSearchToolsUnavailable
       ? unsupportedReason("tools", activeModel)
       : null;
 
@@ -128,16 +130,24 @@ export function ChatComposer({
     </span>
   ) : null;
 
-  const memoryWarning = memoryToolsHint ? (
-    <span
-      className={glassPill(
-        "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
-      )}
-      title={memoryToolsHint}
-    >
-      Memory read-only
-    </span>
-  ) : null;
+  const toolsWarningLabel = (() => {
+    if (memoryToolsUnavailable && webSearchToolsUnavailable) return "Tools unavailable";
+    if (memoryToolsUnavailable) return "Memory read-only";
+    if (webSearchToolsUnavailable) return "Search unavailable";
+    return null;
+  })();
+
+  const toolsWarning =
+    toolsWarningLabel && toolsUnavailableHint ? (
+      <span
+        className={glassPill(
+          "inline-flex max-w-xs items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-400",
+        )}
+        title={toolsUnavailableHint}
+      >
+        {toolsWarningLabel}
+      </span>
+    ) : null;
 
   return (
     <div className="oc-composer-pad z-20 shrink-0 pt-3">
@@ -172,7 +182,7 @@ export function ChatComposer({
               model={activeModel}
             />
             {capabilityWarning}
-            {memoryWarning}
+            {toolsWarning}
           </div>
         ) : (
           <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
@@ -197,7 +207,7 @@ export function ChatComposer({
               model={activeModel}
             />
             {capabilityWarning}
-            {memoryWarning}
+            {toolsWarning}
           </div>
         )}
         <ChatInput

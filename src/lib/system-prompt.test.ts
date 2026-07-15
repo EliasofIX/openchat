@@ -36,11 +36,13 @@ function settings(patch: Partial<UserSettings> = {}): UserSettings {
     },
     titleGeneration: { enabled: true, provider: "openrouter", model: "" },
     memory: { enabled: true },
+    webSearch: { enabled: false },
     promptCaching: { enabled: true, ttl: "5m" },
     zdrOnly: false,
     tts: { voice: "eve" },
     ...patch,
     memory: patch.memory ?? { enabled: true },
+    webSearch: patch.webSearch ?? { enabled: false },
   };
 }
 
@@ -86,5 +88,13 @@ describe("buildStableSystemPrompt / buildFullSystemPrompt", () => {
     const full = buildFullSystemPrompt(s, memories);
     assert.ok(full?.includes(MEMORY_SECTION_MARKER));
     assert.ok(full?.includes("Likes dark mode"));
+  });
+
+  it("includes web search hint only when web search is enabled", () => {
+    const off = settings({ webSearch: { enabled: false } });
+    assert.ok(!buildStableSystemPrompt(off)?.includes("web_search"));
+
+    const on = settings({ webSearch: { enabled: true } });
+    assert.ok(buildStableSystemPrompt(on)?.includes("web_search"));
   });
 });

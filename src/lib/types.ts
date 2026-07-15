@@ -32,6 +32,15 @@ export type MemoryNotice = {
   content?: string;
 };
 
+/** Web search hit shown under an assistant reply and mapped to [n] citations. */
+export type MessageSource = {
+  /** 1-based index matching [n] citations in content. */
+  index: number;
+  title: string;
+  url: string;
+  snippet?: string;
+};
+
 export type Message = {
   id: string;
   role: Role;
@@ -40,6 +49,8 @@ export type Message = {
   reasoning?: string;
   reasoningDurationMs?: number;
   memoryNotice?: MemoryNotice;
+  /** Sources from web_search tool rounds for this assistant reply. */
+  sources?: MessageSource[];
   createdAt: number;
 };
 
@@ -90,6 +101,10 @@ export type MemorySettings = {
   enabled: boolean;
 };
 
+export type WebSearchSettings = {
+  enabled: boolean;
+};
+
 export type PromptCachingSettings = {
   enabled: boolean;
   /** Provider cache TTL — 5 minutes (default) or 1 hour (higher write cost). */
@@ -101,6 +116,9 @@ export type GrokTtsVoice = "eve" | "ara" | "rex" | "sal" | "leo";
 export type TtsSettings = {
   voice: GrokTtsVoice;
 };
+
+/** Tool names the client can execute and the chat route may attach. */
+export type ChatToolName = "save_memory" | "web_search";
 
 export type UserSettings = {
   name: string;
@@ -115,6 +133,7 @@ export type UserSettings = {
   reasoning: ReasoningSettings;
   titleGeneration: TitleGenerationSettings;
   memory: MemorySettings;
+  webSearch: WebSearchSettings;
   promptCaching: PromptCachingSettings;
   /** When true, OpenRouter requests only route to Zero Data Retention endpoints. */
   zdrOnly: boolean;

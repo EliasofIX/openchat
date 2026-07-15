@@ -10,12 +10,13 @@
 
 import type { ChatMessage } from "@/lib/ai-client";
 import { memoryToolSystemHint } from "@/lib/memory-tools";
+import { webSearchSystemHint } from "@/lib/web-search";
 import type { Memory, UserSettings } from "@/lib/types";
 
 export const MEMORY_SECTION_MARKER =
   "The following are things you should remember about the user across conversations:";
 
-/** Stable system prompt — name, custom instructions, memory-tool hint only. */
+/** Stable system prompt — name, custom instructions, tool hints only. */
 export function buildStableSystemPrompt(s: UserSettings): string | undefined {
   const lines: string[] = [];
   if (s.name.trim()) lines.push(`The user's name is ${s.name.trim()}.`);
@@ -23,8 +24,13 @@ export function buildStableSystemPrompt(s: UserSettings): string | undefined {
     lines.push("The user has provided the following custom instructions:");
     lines.push(s.customInstructions.trim());
   }
+  // Tool hints must match tools actually attached (settings only — capability
+  // gate happens when building enabledTools for /api/chat).
   if (s.memory.enabled) {
     lines.push(memoryToolSystemHint());
+  }
+  if (s.webSearch.enabled) {
+    lines.push(webSearchSystemHint());
   }
   return lines.length ? lines.join("\n\n") : undefined;
 }

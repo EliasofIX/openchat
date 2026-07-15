@@ -93,6 +93,15 @@ export function ExternalLink({ size, className }: IconProps) {
   );
 }
 
+export function Search({ size, className }: IconProps) {
+  return (
+    <Icon size={size} className={className}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </Icon>
+  );
+}
+
 export function Eye({ size, className }: IconProps) {
   return (
     <Icon size={size} className={className}>

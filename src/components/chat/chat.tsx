@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PanelLeft, PanelLeftClose, SquarePen } from "@/components/icons";
 import { ChatComposer } from "./chat-composer";
 import { MessageItem } from "./message";
@@ -24,7 +24,7 @@ import { LOAD_MORE_MESSAGE_STEP, VISIBLE_MESSAGE_LIMIT } from "@/lib/constants";
 import { getActiveModel } from "@/lib/providers";
 import { clearStorageError, getStorageError, onStorageError } from "@/lib/storage";
 import { cn } from "@/lib/utils";
-import type { MessageAttachment } from "@/lib/types";
+import type { ChatToolName, MessageAttachment } from "@/lib/types";
 
 const SettingsDialog = dynamic(
   () => import("./settings-dialog").then((m) => m.SettingsDialog),
@@ -55,17 +55,22 @@ export function Chat() {
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
   });
 
-  const memoryToolsAvailable = modelCapabilities.capabilities.tools;
+  const toolsCapable = modelCapabilities.capabilities.tools;
   // Wait for capabilities so we never send `tools` while still on the
   // conservative default (tools: false) flip — or worse, a stale true.
-  const memoryEnabled =
-    settingsHook.settings.memory.enabled &&
-    !modelCapabilities.loading &&
-    memoryToolsAvailable;
+  const toolsReady = !modelCapabilities.loading && toolsCapable;
+  const memorySettingOn = settingsHook.settings.memory.enabled;
+  const webSearchSettingOn = settingsHook.settings.webSearch.enabled;
+  const enabledTools = useMemo((): ChatToolName[] => {
+    const tools: ChatToolName[] = [];
+    if (memorySettingOn && toolsReady) tools.push("save_memory");
+    if (webSearchSettingOn && toolsReady) tools.push("web_search");
+    return tools;
+  }, [memorySettingOn, webSearchSettingOn, toolsReady]);
   const memoryToolsUnavailable =
-    settingsHook.settings.memory.enabled &&
-    !modelCapabilities.loading &&
-    !memoryToolsAvailable;
+    memorySettingOn && !modelCapabilities.loading && !toolsCapable;
+  const webSearchToolsUnavailable =
+    webSearchSettingOn && !modelCapabilities.loading && !toolsCapable;
 
   // Stable system for chat + meter; memories are a separate upstream user msg.
   const stableSystemPrompt = buildStableSystemPrompt(settingsHook.settings);
@@ -109,7 +114,7 @@ export function Chat() {
     apiKey: settingsHook.settings.openRouterApiKey,
     ollamaBaseUrl: settingsHook.settings.ollamaBaseUrl,
     reasoning: settingsHook.settings.reasoning,
-    memoryEnabled,
+    enabledTools,
     promptCaching: settingsHook.settings.promptCaching,
     promptCachingMode: modelCapabilities.capabilities.promptCaching,
     zdrOnly: settingsHook.settings.zdrOnly,
@@ -379,6 +384,7 @@ export function Chat() {
             modelCapabilitiesLoading={modelCapabilities.loading}
             modelCapabilitiesError={modelCapabilities.error}
             memoryToolsUnavailable={memoryToolsUnavailable}
+            webSearchToolsUnavailable={webSearchToolsUnavailable}
             settings={settingsHook.settings}
             attachmentsHook={attachmentsHook}
             onSend={onSend}

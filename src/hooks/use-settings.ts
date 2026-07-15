@@ -26,6 +26,9 @@ export function useSettings() {
           ? { ...prev.titleGeneration, ...patch.titleGeneration }
           : prev.titleGeneration,
         memory: patch.memory ? { ...prev.memory, ...patch.memory } : prev.memory,
+        webSearch: patch.webSearch
+          ? { ...prev.webSearch, ...patch.webSearch }
+          : prev.webSearch,
         promptCaching: patch.promptCaching
           ? { ...prev.promptCaching, ...patch.promptCaching }
           : prev.promptCaching,

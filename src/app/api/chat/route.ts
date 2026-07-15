@@ -15,10 +15,13 @@ import {
 } from "@/lib/ai-client";
 import {
   createToolCallAccumulator,
-  MEMORY_TOOLS,
+  MEMORY_TOOL_DEFINITION,
   toWireToolCall,
   type CompletedToolCall,
 } from "@/lib/memory-tools";
+import { WEB_SEARCH_TOOL_DEFINITION } from "@/lib/web-search";
+import type { ChatToolName } from "@/lib/types";
+import type { ChatToolDefinition } from "@/lib/ai-client";
 import {
   buildOpenRouterReasoning,
   hermesReasoningSystemDirective,
@@ -69,12 +72,37 @@ type ChatRequest = {
   apiKey?: string;
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
+  /** @deprecated Prefer `enabledTools`. Kept for older clients. */
   memoryEnabled?: boolean;
+  /** Tools the client will execute — server only attaches these definitions. */
+  enabledTools?: ChatToolName[];
   promptCaching?: PromptCachingSettings;
   sessionId?: string;
   promptCachingMode?: import("@/lib/prompt-cache").PromptCachingMode;
   zdrOnly?: boolean;
 };
+
+const TOOL_DEFINITIONS: Record<ChatToolName, ChatToolDefinition> = {
+  save_memory: MEMORY_TOOL_DEFINITION,
+  web_search: WEB_SEARCH_TOOL_DEFINITION,
+};
+
+function resolveEnabledTools(body: ChatRequest): ChatToolDefinition[] {
+  if (Array.isArray(body.enabledTools)) {
+    const seen = new Set<ChatToolName>();
+    const tools: ChatToolDefinition[] = [];
+    for (const name of body.enabledTools) {
+      if (name !== "save_memory" && name !== "web_search") continue;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      tools.push(TOOL_DEFINITIONS[name]);
+    }
+    return tools;
+  }
+  // Legacy: memoryEnabled alone meant "attach save_memory".
+  if (body.memoryEnabled) return [MEMORY_TOOL_DEFINITION];
+  return [];
+}
 
 type StreamPart = "content" | "reasoning";
 
@@ -208,14 +236,14 @@ export async function POST(req: Request) {
     ollamaBaseUrl,
     reasoning,
     provider: providerInput,
-    memoryEnabled,
     promptCaching,
     sessionId,
     promptCachingMode,
     zdrOnly,
   } = body;
   const provider = resolveProvider(providerInput);
-  const toolsEnabled = Boolean(memoryEnabled);
+  const tools = resolveEnabledTools(body);
+  const toolsEnabled = tools.length > 0;
   const promptCachingEnabled = shouldEnablePromptCache(provider, promptCaching);
 
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -243,7 +271,7 @@ export async function POST(req: Request) {
   const useNdjson = streamReasoning || toolsEnabled || promptCachingEnabled;
   const showReasoningInStream = Boolean(reasoning?.showInResponse);
   const toolParams = toolsEnabled
-    ? { tools: MEMORY_TOOLS, tool_choice: "auto" as const }
+    ? { tools, tool_choice: "auto" as const }
     : {};
 
   const promptCacheParams = applyPromptCache({
@@ -252,7 +280,7 @@ export async function POST(req: Request) {
     messages: upstreamMessages,
     settings: promptCaching,
     sessionId,
-    tools: toolsEnabled ? MEMORY_TOOLS : undefined,
+    tools: toolsEnabled ? tools : undefined,
     cachingMode: promptCachingMode,
   });
   const cachedUpstreamMessages = promptCacheParams?.messages ?? upstreamMessages;

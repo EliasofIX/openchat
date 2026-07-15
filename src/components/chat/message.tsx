@@ -6,9 +6,22 @@ import { Markdown } from "@/components/markdown-lazy";
 import { useAttachmentBlob } from "@/hooks/use-attachment-blob";
 import { useMessageTts } from "@/hooks/use-message-tts";
 import { ReasoningPanel } from "./reasoning-panel";
+import { SourcesPanel } from "./sources-panel";
 import { MemoryNoticeRow } from "./memory-notice-row";
 import { cn, touchVisible } from "@/lib/utils";
 import type { GrokTtsVoice, Message, MessageAttachment } from "@/lib/types";
+
+function sourcesEqual(
+  a: Message["sources"] | undefined,
+  b: Message["sources"] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every(
+    (s, i) =>
+      s.index === b[i]?.index && s.url === b[i]?.url && s.title === b[i]?.title,
+  );
+}
 
 function messagePropsEqual(
   prev: {
@@ -37,6 +50,7 @@ function messagePropsEqual(
     prev.message.reasoningDurationMs === next.message.reasoningDurationMs &&
     prev.message.memoryNotice?.status === next.message.memoryNotice?.status &&
     prev.message.memoryNotice?.content === next.message.memoryNotice?.content &&
+    sourcesEqual(prev.message.sources, next.message.sources) &&
     prev.message.attachments?.length === next.message.attachments?.length &&
     prev.isStreaming === next.isStreaming &&
     prev.collapseReasoningByDefault === next.collapseReasoningByDefault &&
@@ -125,6 +139,8 @@ function AssistantMessage({
   const isThinking = isStreaming && hasReasoning && !hasContent;
   const memoryNotice = message.memoryNotice;
   const showMemoryNotice = Boolean(memoryNotice);
+  const sources = message.sources;
+  const hasSources = Boolean(sources?.length);
 
   const onCopy = async () => {
     try {
@@ -149,12 +165,20 @@ function AssistantMessage({
 
       {hasContent && (
         <>
-          <Markdown content={message.content} defer={isStreaming} />
+          <Markdown
+            content={message.content}
+            sources={sources}
+            defer={isStreaming}
+          />
           {isStreaming && <StreamingCursor />}
         </>
       )}
 
       {!hasContent && !hasReasoning && isStreaming && <StreamingCursor />}
+
+      {hasSources && sources && (
+        <SourcesPanel sources={sources} isSearching={isStreaming && !hasContent} />
+      )}
 
       {showMemoryNotice && memoryNotice && (
         <MemoryNoticeRow

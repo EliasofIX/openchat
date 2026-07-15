@@ -25,12 +25,21 @@ import {
   type CompletedToolCall,
   type SaveMemoryResult,
 } from "@/lib/memory-tools";
+import {
+  formatDuplicateSearchToolResult,
+  formatSearchToolResult,
+  mergeMessageSources,
+  parseWebSearchArguments,
+  WEB_SEARCH_TOOL_NAME,
+} from "@/lib/web-search";
 import { reconcileReasoningAndContent } from "@/lib/reasoning";
 import type { PromptCacheUsage } from "@/lib/prompt-cache";
 import type {
+  ChatToolName,
   MemoryNotice,
   Message,
   MessageAttachment,
+  MessageSource,
   ModelProvider,
   PromptCachingSettings,
   ReasoningSettings,
@@ -54,7 +63,8 @@ export type UseChatOptions = {
   apiKey?: string;
   ollamaBaseUrl?: string;
   reasoning?: ReasoningSettings;
-  memoryEnabled?: boolean;
+  /** Tools the server should attach and this client will execute. */
+  enabledTools?: ChatToolName[];
   promptCaching?: PromptCachingSettings;
   promptCachingMode?: import("@/lib/prompt-cache").PromptCachingMode;
   zdrOnly?: boolean;
@@ -79,11 +89,59 @@ type ApiPayloadMessage = {
 
 function isNdjsonStream(
   contentType: string | null,
-  memoryEnabled: boolean,
+  toolsEnabled: boolean,
   promptCachingEnabled: boolean,
 ): boolean {
   if (contentType?.includes("application/x-ndjson")) return true;
-  return memoryEnabled || promptCachingEnabled;
+  return toolsEnabled || promptCachingEnabled;
+}
+
+async function executeWebSearchTool(
+  argumentsJson: string,
+  signal: AbortSignal,
+): Promise<{ content: string; sources: MessageSource[] }> {
+  const query = parseWebSearchArguments(argumentsJson);
+  if (!query) {
+    return { content: "Invalid search query.", sources: [] };
+  }
+
+  try {
+    const res = await fetch("/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({ query }),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return {
+        content: detail || `Search failed (${res.status}).`,
+        sources: [],
+      };
+    }
+
+    const data = (await res.json()) as {
+      results?: MessageSource[];
+      error?: string;
+    };
+    const sources = Array.isArray(data.results) ? data.results : [];
+    if (sources.length === 0) {
+      return {
+        content: data.error?.trim() || "No search results found.",
+        sources: [],
+      };
+    }
+    return { content: formatSearchToolResult(sources), sources };
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      return { content: "Search aborted.", sources: [] };
+    }
+    return {
+      content: `Search failed: ${(err as Error).message || "unknown error"}`,
+      sources: [],
+    };
+  }
 }
 
 function parseStreamLine(line: string): StreamPart | null {
@@ -154,7 +212,7 @@ export function useChat(options: UseChatOptions = {}) {
     apiKey,
     ollamaBaseUrl,
     reasoning,
-    memoryEnabled,
+    enabledTools,
     promptCaching,
     promptCachingMode,
     zdrOnly,
@@ -177,7 +235,7 @@ export function useChat(options: UseChatOptions = {}) {
   const apiKeyRef = useRef(apiKey);
   const ollamaBaseUrlRef = useRef(ollamaBaseUrl);
   const reasoningRef = useRef(reasoning);
-  const memoryEnabledRef = useRef(memoryEnabled);
+  const enabledToolsRef = useRef(enabledTools);
   const promptCachingRef = useRef(promptCaching);
   const promptCachingModeRef = useRef(promptCachingMode);
   const zdrOnlyRef = useRef(zdrOnly);
@@ -197,7 +255,7 @@ export function useChat(options: UseChatOptions = {}) {
   useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
   useEffect(() => { ollamaBaseUrlRef.current = ollamaBaseUrl; }, [ollamaBaseUrl]);
   useEffect(() => { reasoningRef.current = reasoning; }, [reasoning]);
-  useEffect(() => { memoryEnabledRef.current = memoryEnabled; }, [memoryEnabled]);
+  useEffect(() => { enabledToolsRef.current = enabledTools; }, [enabledTools]);
   useEffect(() => { promptCachingRef.current = promptCaching; }, [promptCaching]);
   useEffect(() => { promptCachingModeRef.current = promptCachingMode; }, [promptCachingMode]);
   useEffect(() => { zdrOnlyRef.current = zdrOnly; }, [zdrOnly]);
@@ -259,6 +317,7 @@ export function useChat(options: UseChatOptions = {}) {
     let accumulated = "";
     let accumulatedReasoning = "";
     let memoryNotice: MemoryNotice | undefined;
+    let messageSources: MessageSource[] | undefined;
     let reasoningStartedAt: number | null = null;
     let reasoningDurationMs: number | undefined;
     let aborted = false;
@@ -291,6 +350,7 @@ export function useChat(options: UseChatOptions = {}) {
             ...(accumulatedReasoning ? { reasoning: accumulatedReasoning } : {}),
             ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
             ...(memoryNotice ? { memoryNotice } : {}),
+            ...(messageSources?.length ? { sources: messageSources } : {}),
           },
         ];
       });
@@ -324,7 +384,11 @@ export function useChat(options: UseChatOptions = {}) {
       if (isStale()) return;
 
       const split = finalizeAssistant(content, reasoningText);
-      const hasPartial = split.content !== "" || split.reasoning !== "";
+      const hasPartial =
+        split.content !== "" ||
+        split.reasoning !== "" ||
+        Boolean(messageSources?.length) ||
+        Boolean(memoryNotice);
 
       if (!hasPartial) {
         setMessages(baseMessages);
@@ -339,6 +403,7 @@ export function useChat(options: UseChatOptions = {}) {
         ...(split.reasoning ? { reasoning: split.reasoning } : {}),
         ...(durationMs !== undefined ? { reasoningDurationMs: durationMs } : {}),
         ...(memoryNotice ? { memoryNotice } : {}),
+        ...(messageSources?.length ? { sources: messageSources } : {}),
         createdAt: Date.now(),
       };
       const finalMessages = [...baseMessages, finalAssistant];
@@ -373,10 +438,12 @@ export function useChat(options: UseChatOptions = {}) {
       let followUpMessages: ApiPayloadMessage[] = [];
       let toolExecutions = 0;
 
-      // Freeze prompt context for the whole send — memory saves during tool
-      // rounds must not bust the cacheable prefix on follow-up HTTP requests.
+      // Freeze prompt context + tool set for the whole send — mid-turn settings
+      // changes must not desync the system-prompt tool hints from attached tools,
+      // and memory saves must not bust the cacheable prefix on follow-ups.
       const frozenSystemPrompt = systemPromptRef.current;
       const frozenMemoryContext = memoryContextRef.current;
+      const frozenEnabledTools = enabledToolsRef.current ?? [];
 
       while (true) {
         if (isStale()) return;
@@ -385,7 +452,9 @@ export function useChat(options: UseChatOptions = {}) {
           systemPrompt: frozenSystemPrompt,
           messages: [...baseApiMessages, ...followUpMessages],
           provider: providerRef.current ?? "openrouter",
-          memoryEnabled: Boolean(memoryEnabledRef.current),
+          enabledTools: frozenEnabledTools,
+          // Legacy flag for older server deploys.
+          memoryEnabled: frozenEnabledTools.includes("save_memory"),
         };
 
         if (frozenMemoryContext) {
@@ -434,7 +503,7 @@ export function useChat(options: UseChatOptions = {}) {
         const decoder = new TextDecoder();
         const ndjson = isNdjsonStream(
           res.headers.get("Content-Type"),
-          Boolean(memoryEnabledRef.current),
+          frozenEnabledTools.length > 0,
           Boolean(
             promptCachingRef.current?.enabled &&
               (providerRef.current ?? "openrouter") === "openrouter",
@@ -527,7 +596,8 @@ export function useChat(options: UseChatOptions = {}) {
         if (isStale()) return;
 
         const saveMemory = onSaveMemoryRef.current;
-        const toolResults: ApiPayloadMessage[] = toolCalls.map((call) => {
+        const toolResults: ApiPayloadMessage[] = [];
+        for (const call of toolCalls) {
           if (call.name === SAVE_MEMORY_TOOL_NAME && saveMemory) {
             const parsedContent = parseSaveMemoryArguments(call.arguments);
             const result = parsedContent ? saveMemory(parsedContent) : ("invalid" as const);
@@ -536,18 +606,58 @@ export function useChat(options: UseChatOptions = {}) {
               memoryNotice = mergeMemoryNotice(memoryNotice, notice);
               scheduleAssistantUi();
             }
-            return {
+            toolResults.push({
               role: "tool",
               tool_call_id: call.id,
               content: executeSaveMemoryTool(call.arguments, () => result),
-            };
+            });
+            continue;
           }
-          return {
+
+          if (call.name === WEB_SEARCH_TOOL_NAME) {
+            const search = await executeWebSearchTool(call.arguments, controller.signal);
+            if (search.sources.length > 0) {
+              const prev = messageSources;
+              messageSources = mergeMessageSources(prev, search.sources);
+              // Re-format with global indices so multi-round citations stay consistent.
+              const prevUrls = new Set((prev ?? []).map((s) => s.url));
+              const added = messageSources.filter((s) => !prevUrls.has(s.url));
+              scheduleAssistantUi();
+              if (added.length > 0) {
+                toolResults.push({
+                  role: "tool",
+                  tool_call_id: call.id,
+                  content: formatSearchToolResult(added),
+                });
+              } else {
+                // All URLs were already cited — map this call back to global indices.
+                const known = search.sources
+                  .map((s) => messageSources?.find((m) => m.url === s.url))
+                  .filter((s): s is MessageSource => Boolean(s));
+                toolResults.push({
+                  role: "tool",
+                  tool_call_id: call.id,
+                  content: formatDuplicateSearchToolResult(known),
+                });
+              }
+            } else {
+              toolResults.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: search.content,
+              });
+            }
+            continue;
+          }
+
+          toolResults.push({
             role: "tool",
             tool_call_id: call.id,
             content: "Unsupported tool.",
-          };
-        });
+          });
+        }
+
+        if (isStale()) return;
 
         followUpMessages = [
           ...followUpMessages,
@@ -601,7 +711,13 @@ export function useChat(options: UseChatOptions = {}) {
     abortRef.current = null;
     setStatus("idle");
 
-    if (aborted && accumulated === "" && accumulatedReasoning === "") {
+    if (
+      aborted &&
+      accumulated === "" &&
+      accumulatedReasoning === "" &&
+      !messageSources?.length &&
+      !memoryNotice
+    ) {
       setMessages(baseMessages);
       flushPersist(baseMessages);
       return;

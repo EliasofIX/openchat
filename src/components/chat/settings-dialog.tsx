@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Brain, Palette, User, Volume2, X } from "@/components/icons";
+import { Brain, Palette, Search, User, Volume2, X } from "@/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogPanel } from "@/components/ui/dialog";
@@ -86,6 +86,7 @@ export function SettingsDialog({
     settings.titleGeneration,
   );
   const [memorySettings, setMemorySettings] = useState(settings.memory);
+  const [webSearchSettings, setWebSearchSettings] = useState(settings.webSearch);
   const [promptCaching, setPromptCaching] = useState(settings.promptCaching);
   const [zdrOnly, setZdrOnly] = useState(settings.zdrOnly);
   const [ttsVoice, setTtsVoice] = useState(settings.tts.voice);
@@ -118,6 +119,7 @@ export function SettingsDialog({
       setCollapseReasoning(settings.reasoning.collapseByDefault);
       setTitleGeneration(settings.titleGeneration);
       setMemorySettings(settings.memory);
+      setWebSearchSettings(settings.webSearch);
       setPromptCaching(settings.promptCaching);
       setZdrOnly(settings.zdrOnly);
       setTtsVoice(settings.tts.voice);
@@ -154,6 +156,7 @@ export function SettingsDialog({
       },
       titleGeneration,
       memory: memorySettings,
+      webSearch: webSearchSettings,
       promptCaching,
       zdrOnly,
       tts: { voice: ttsVoice },
@@ -234,6 +237,30 @@ export function SettingsDialog({
                   onRemoveMemory={onRemoveMemory}
                 />
               </div>
+
+              <Separator />
+
+              <SettingsSection
+                icon={Search}
+                title="Web search"
+                description="Let the model look up current information via DuckDuckGo. No commercial search API key — results are fetched through a local proxy."
+              >
+                <SettingsToggleRow
+                  label="Enable web search"
+                  description="Gives the model a web_search tool when the model supports tools. Cites sources inline as [1], [2], …"
+                  checked={webSearchSettings.enabled}
+                  onChange={(enabled) =>
+                    setWebSearchSettings((prev) => ({ ...prev, enabled }))
+                  }
+                />
+                {webSearchSettings.enabled && (
+                  <p className="rounded-xl border border-border bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                    Uses DuckDuckGo HTML results when available, with Instant Answer
+                    as a fallback. Personal / open-source use only — not a production
+                    SERP product.
+                  </p>
+                )}
+              </SettingsSection>
 
               <Separator />
 

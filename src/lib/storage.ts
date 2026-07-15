@@ -88,6 +88,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   memory: {
     enabled: true,
   },
+  webSearch: {
+    enabled: false,
+  },
   promptCaching: {
     enabled: true,
     ttl: "5m",
@@ -146,6 +149,10 @@ function normalizeSettings(stored: Partial<UserSettings>): UserSettings {
     memory: {
       ...DEFAULT_SETTINGS.memory,
       ...stored.memory,
+    },
+    webSearch: {
+      ...DEFAULT_SETTINGS.webSearch,
+      ...stored.webSearch,
     },
     promptCaching: {
       ...DEFAULT_SETTINGS.promptCaching,
