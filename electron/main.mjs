@@ -5,12 +5,20 @@
 
 import { app, BrowserWindow, dialog, powerMonitor, shell } from "electron";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.ELECTRON_DEV === "1";
+const root = join(__dirname, "..");
+
+/** Window icon for Linux/Windows (macOS uses the .app bundle icon). */
+function windowIcon() {
+  const path = join(root, "assets", "brand", "icon.png");
+  return existsSync(path) ? path : undefined;
+}
 
 let serverProcess = null;
 let mainWindow = null;
@@ -178,6 +186,7 @@ async function createWindow() {
       url = await startStandaloneServerWithRetry();
     }
 
+    const icon = windowIcon();
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
@@ -185,6 +194,7 @@ async function createWindow() {
       minHeight: 360,
       title: "Open Chat",
       show: false,
+      ...(icon ? { icon } : {}),
       // macOS: overlay traffic lights on the page instead of a separate title bar.
       ...(process.platform === "darwin"
         ? {

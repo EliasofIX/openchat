@@ -39,6 +39,7 @@
   "build": {
     "appId": "com.openchat.app",
     "productName": "Open Chat",
+    "icon": "assets/brand/icon.png",
     "directories": {
       "output": "dist"
     },
