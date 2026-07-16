@@ -92,7 +92,7 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
         aria-label="Now playing"
         className={cn(
           "pointer-events-auto relative flex items-center gap-0.5 rounded-full",
-          "border border-border bg-foreground px-1.5 py-1 text-background shadow-lg",
+          "border border-border bg-card px-1.5 py-1 text-card-foreground shadow-lg",
         )}
       >
         <button
@@ -101,7 +101,7 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
           disabled={isLoading}
           className={cn(
             "grid size-8 place-items-center rounded-full transition",
-            "hover:bg-background/15 disabled:opacity-50",
+            "hover:bg-muted disabled:opacity-50",
           )}
           aria-label={isPaused ? "Resume" : "Pause"}
         >
@@ -120,7 +120,7 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
             onClick={() => setVoiceOpen((o) => !o)}
             className={cn(
               "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition",
-              "hover:bg-background/15",
+              "hover:bg-muted",
             )}
             aria-haspopup="listbox"
             aria-expanded={voiceOpen}
@@ -170,7 +170,7 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
           onClick={cycleTtsRate}
           className={cn(
             "inline-flex h-8 min-w-9 items-center justify-center rounded-full px-2.5 text-xs font-medium tabular-nums transition",
-            "hover:bg-background/15",
+            "hover:bg-muted",
           )}
           aria-label={`Playback speed ${formatRate(playback.rate)}. Click to change.`}
         >
@@ -182,7 +182,7 @@ export function TtsNowPlaying({ voice, onVoiceChange }: Props) {
           onClick={stopTts}
           className={cn(
             "grid size-8 place-items-center rounded-full transition",
-            "hover:bg-background/15",
+            "hover:bg-muted",
           )}
           aria-label="Stop read aloud"
         >
